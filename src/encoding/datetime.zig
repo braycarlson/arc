@@ -21,7 +21,36 @@ const DateTime = struct {
     second: u32,
 };
 
+fn write_padded_digits(dest: []u8, value: u32) void {
+    std.debug.assert(dest.len > 0);
+    std.debug.assert(dest.len <= 4);
+
+    var remaining = value;
+    var position = dest.len;
+
+    while (position > 0) {
+        position -= 1;
+        dest[position] = @intCast('0' + remaining % 10);
+        remaining /= 10;
+    }
+
+    std.debug.assert(remaining == 0);
+}
+
 pub fn write_iso8601(buffer: *Buffer, timestamp_ns: i64, offset_minutes: i32) void {
+    write_iso8601_impl(buffer, timestamp_ns, offset_minutes, false);
+}
+
+pub fn write_iso8601_nano(buffer: *Buffer, timestamp_ns: i64, offset_minutes: i32) void {
+    write_iso8601_impl(buffer, timestamp_ns, offset_minutes, true);
+}
+
+fn write_iso8601_impl(
+    buffer: *Buffer,
+    timestamp_ns: i64,
+    offset_minutes: i32,
+    fixed_fraction: bool,
+) void {
     std.debug.assert(offset_minutes > -1440);
     std.debug.assert(offset_minutes < 1440);
 
@@ -35,19 +64,26 @@ pub fn write_iso8601(buffer: *Buffer, timestamp_ns: i64, offset_minutes: i32) vo
 
     const datetime = epoch_to_datetime(seconds);
 
-    buffer.append_padded_u32(datetime.year, 4);
-    buffer.append_byte('-');
-    buffer.append_padded_u32(datetime.month, 2);
-    buffer.append_byte('-');
-    buffer.append_padded_u32(datetime.day, 2);
-    buffer.append_byte('T');
-    buffer.append_padded_u32(datetime.hour, 2);
-    buffer.append_byte(':');
-    buffer.append_padded_u32(datetime.minute, 2);
-    buffer.append_byte(':');
-    buffer.append_padded_u32(datetime.second, 2);
+    var scratch: [19]u8 = undefined;
 
-    if (fraction_ns > 0) {
+    write_padded_digits(scratch[0..4], datetime.year);
+    scratch[4] = '-';
+    write_padded_digits(scratch[5..7], datetime.month);
+    scratch[7] = '-';
+    write_padded_digits(scratch[8..10], datetime.day);
+    scratch[10] = 'T';
+    write_padded_digits(scratch[11..13], datetime.hour);
+    scratch[13] = ':';
+    write_padded_digits(scratch[14..16], datetime.minute);
+    scratch[16] = ':';
+    write_padded_digits(scratch[17..19], datetime.second);
+
+    buffer.append_slice(&scratch);
+
+    if (fixed_fraction) {
+        buffer.append_byte('.');
+        write_fraction_fixed(buffer, fraction_ns, 9);
+    } else if (fraction_ns > 0) {
         buffer.append_byte('.');
         write_fraction_trimmed(buffer, fraction_ns, 9);
     }
@@ -226,6 +262,25 @@ fn write_fraction_trimmed(buffer: *Buffer, fraction: u64, frac_digits: u32) void
     }
 
     buffer.append_slice(scratch[0..trimmed]);
+}
+
+fn write_fraction_fixed(buffer: *Buffer, fraction: u64, frac_digits: u32) void {
+    std.debug.assert(frac_digits > 0);
+    std.debug.assert(frac_digits <= 9);
+
+    var scratch: [9]u8 = undefined;
+    var index: u32 = frac_digits;
+    var remaining = fraction;
+
+    while (index > 0) {
+        index -= 1;
+        scratch[index] = @intCast('0' + remaining % 10);
+        remaining /= 10;
+    }
+
+    std.debug.assert(remaining == 0);
+
+    buffer.append_slice(scratch[0..frac_digits]);
 }
 
 fn epoch_to_datetime(timestamp_s: i64) DateTime {

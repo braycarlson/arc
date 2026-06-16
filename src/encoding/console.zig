@@ -100,6 +100,11 @@ pub const ConsoleEncoder = struct {
                 timestamp_ns,
                 self.config.time_offset_minutes,
             ),
+            .rfc3339_nano => datetime.write_iso8601_nano(
+                buffer,
+                timestamp_ns,
+                self.config.time_offset_minutes,
+            ),
         }
     }
 

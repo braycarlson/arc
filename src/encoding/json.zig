@@ -20,6 +20,8 @@ const nanos_per_milli: i64 = 1_000_000;
 
 const hex_digits = "0123456789abcdef";
 
+const escape_lane_count = 16;
+
 pub const truncation_message = "log entry exceeded buffer capacity and was dropped";
 const truncation_key = "arc_truncated";
 
@@ -786,6 +788,14 @@ fn encode_time_value(
             datetime.write_iso8601(buffer, timestamp_ns, config.time_offset_minutes);
             buffer.append_byte('"');
         },
+        .rfc3339_nano => {
+            write_separator(state, buffer);
+            write_quoted(buffer, key);
+            buffer.append_byte(':');
+            buffer.append_byte('"');
+            datetime.write_iso8601_nano(buffer, timestamp_ns, config.time_offset_minutes);
+            buffer.append_byte('"');
+        },
     }
 }
 
@@ -1051,6 +1061,11 @@ fn write_time_element(config: *const EncoderConfig, buffer: *Buffer, timestamp_n
             datetime.write_iso8601(buffer, timestamp_ns, config.time_offset_minutes);
             buffer.append_byte('"');
         },
+        .rfc3339_nano => {
+            buffer.append_byte('"');
+            datetime.write_iso8601_nano(buffer, timestamp_ns, config.time_offset_minutes);
+            buffer.append_byte('"');
+        },
     }
 }
 
@@ -1093,7 +1108,40 @@ pub fn write_quoted(buffer: *Buffer, value: []const u8) void {
     buffer.append_byte('"');
 }
 
+fn chunk_is_clean(chunk: @Vector(escape_lane_count, u8)) bool {
+    const Vec = @Vector(escape_lane_count, u8);
+
+    const has_low = @reduce(.Or, chunk < @as(Vec, @splat(0x20)));
+    const has_quote = @reduce(.Or, chunk == @as(Vec, @splat('"')));
+    const has_backslash = @reduce(.Or, chunk == @as(Vec, @splat('\\')));
+    const has_high = @reduce(.Or, chunk >= @as(Vec, @splat(0x80)));
+
+    return !(has_low or has_quote or has_backslash or has_high);
+}
+
 fn write_escaped(buffer: *Buffer, value: []const u8) void {
+    const Vec = @Vector(escape_lane_count, u8);
+
+    var offset: usize = 0;
+
+    while (value.len - offset >= escape_lane_count) {
+        const chunk: Vec = value[offset..][0..escape_lane_count].*;
+
+        if (!chunk_is_clean(chunk)) {
+            break;
+        }
+
+        offset += escape_lane_count;
+    }
+
+    if (offset > 0) {
+        buffer.append_slice(value[0..offset]);
+    }
+
+    write_escaped_scalar(buffer, value[offset..]);
+}
+
+fn write_escaped_scalar(buffer: *Buffer, value: []const u8) void {
     var start: usize = 0;
     var cursor: usize = 0;
 

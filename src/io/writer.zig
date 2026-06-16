@@ -30,6 +30,7 @@ pub const Writer = union(enum) {
     tee: *const Tee,
     locked: *LockedWriter,
     buffered: *BufferedWriter,
+    rotating: *RotatingWriter,
 
     pub fn write(self: Writer, io: std.Io, data: []const u8) WriteError!void {
         std.debug.assert(data.len > 0);
@@ -43,6 +44,7 @@ pub const Writer = union(enum) {
             .tee => |tee| try tee.write(io, data),
             .locked => |locked| try locked.write(io, data),
             .buffered => |buffered| try buffered.write(io, data),
+            .rotating => |rotating_writer| try rotating_writer.write(io, data),
         }
     }
 
@@ -54,6 +56,7 @@ pub const Writer = union(enum) {
             .tee => |tee| try tee.sync(io),
             .locked => |locked| try locked.sync(io),
             .buffered => |buffered| try buffered.sync(io),
+            .rotating => |rotating_writer| try rotating_writer.sync(io),
             .stderr, .stdout, .buffer, .nop => {},
         }
     }
@@ -76,7 +79,7 @@ pub const Writer = union(enum) {
             .stderr => stderr_fd(),
             .stdout => stdout_fd(),
             .fd => |fd| fd,
-            .buffer, .nop, .tee, .locked, .buffered => null,
+            .buffer, .nop, .tee, .locked, .buffered, .rotating => null,
         };
     }
 };
@@ -317,6 +320,255 @@ pub const BufferedWriter = struct {
 
     pub fn error_count(self: *const BufferedWriter) u64 {
         return self.flush_error_count.load(.monotonic);
+    }
+};
+
+pub const rotating_path_max: u32 = 512;
+pub const rotating_backup_count_max: u32 = 9;
+
+const rotating_path_with_suffix_max: u32 = rotating_path_max + 8;
+const rotating_size_max_default: u32 = 5 * 1024 * 1024;
+const rotating_backup_count_default: u32 = 5;
+
+pub const RotatingError = error{
+    InvalidPath,
+    FileOpenFailed,
+    StatFailed,
+};
+
+const RollDate = struct {
+    year: u16,
+    month: u4,
+    day: u5,
+
+    fn current(io: std.Io) RollDate {
+        const timestamp = std.Io.Timestamp.now(io, .real).toSeconds();
+
+        return RollDate.from_timestamp(timestamp);
+    }
+
+    fn from_timestamp(timestamp: i64) RollDate {
+        std.debug.assert(timestamp >= 0);
+
+        const epoch_seconds = std.time.epoch.EpochSeconds{ .secs = @intCast(timestamp) };
+        const epoch_day = epoch_seconds.getEpochDay();
+        const year_day = epoch_day.calculateYearDay();
+        const month_day = year_day.calculateMonthDay();
+
+        return .{
+            .year = year_day.year,
+            .month = month_day.month.numeric(),
+            .day = month_day.day_index + 1,
+        };
+    }
+
+    fn eql(self: RollDate, other: RollDate) bool {
+        return self.year == other.year and self.month == other.month and self.day == other.day;
+    }
+};
+
+pub const RotatingWriter = struct {
+    pub const Options = struct {
+        path: []const u8,
+        size_max: u32 = rotating_size_max_default,
+        backup_count: u32 = rotating_backup_count_default,
+        roll_daily: bool = true,
+    };
+
+    file: ?std.Io.File,
+    path: [rotating_path_max]u8,
+    path_length: u32,
+    current_size: u32,
+    size_max: u32,
+    backup_count: u32,
+    roll_daily: bool,
+    last_date: ?RollDate,
+    mutex: std.Io.Mutex,
+
+    pub fn init(io: std.Io, options: Options) RotatingError!RotatingWriter {
+        std.debug.assert(options.path.len > 0);
+
+        const path_length: u32 = @intCast(options.path.len);
+
+        if (path_length > rotating_path_max) {
+            return error.InvalidPath;
+        }
+
+        if (options.backup_count > rotating_backup_count_max) {
+            return error.InvalidPath;
+        }
+
+        var rotating_writer: RotatingWriter = undefined;
+        rotating_writer.file = null;
+        rotating_writer.path_length = path_length;
+        rotating_writer.current_size = 0;
+        rotating_writer.size_max = options.size_max;
+        rotating_writer.backup_count = options.backup_count;
+        rotating_writer.roll_daily = options.roll_daily;
+        rotating_writer.last_date = null;
+        rotating_writer.mutex = .init;
+
+        @memcpy(rotating_writer.path[0..path_length], options.path);
+
+        std.debug.assert(rotating_writer.path_length > 0);
+        std.debug.assert(rotating_writer.path_length <= rotating_path_max);
+
+        try rotating_writer.open_file(io);
+
+        rotating_writer.last_date = RollDate.current(io);
+
+        std.debug.assert(rotating_writer.file != null);
+        return rotating_writer;
+    }
+
+    pub fn deinit(self: *RotatingWriter, io: std.Io) void {
+        if (self.file) |file| {
+            file.close(io);
+            self.file = null;
+        }
+
+        std.debug.assert(self.file == null);
+    }
+
+    pub fn write(self: *RotatingWriter, io: std.Io, data: []const u8) WriteError!void {
+        std.debug.assert(data.len > 0);
+        std.debug.assert(self.path_length > 0);
+
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+
+        self.maybe_rotate(io);
+
+        const file = self.file orelse return error.WriteFailed;
+        const data_length: u32 = @intCast(data.len);
+
+        file.writePositionalAll(io, data, self.current_size) catch return error.WriteFailed;
+
+        self.current_size += data_length;
+
+        std.debug.assert(self.current_size >= data_length);
+    }
+
+    pub fn sync(self: *RotatingWriter, io: std.Io) WriteError!void {
+        self.mutex.lockUncancelable(io);
+        defer self.mutex.unlock(io);
+
+        const file = self.file orelse return;
+
+        file.sync(io) catch return error.WriteFailed;
+    }
+
+    fn maybe_rotate(self: *RotatingWriter, io: std.Io) void {
+        if (!self.should_rotate(io)) {
+            return;
+        }
+
+        self.rotate(io) catch {};
+    }
+
+    fn should_rotate(self: *const RotatingWriter, io: std.Io) bool {
+        if (self.current_size >= self.size_max) {
+            return true;
+        }
+
+        if (self.roll_daily and self.has_date_changed(io)) {
+            return true;
+        }
+
+        return false;
+    }
+
+    fn has_date_changed(self: *const RotatingWriter, io: std.Io) bool {
+        const today = RollDate.current(io);
+
+        if (self.last_date) |last| {
+            return !today.eql(last);
+        }
+
+        return false;
+    }
+
+    fn rotate(self: *RotatingWriter, io: std.Io) RotatingError!void {
+        std.debug.assert(self.path_length > 0);
+
+        if (self.file) |file| {
+            file.close(io);
+            self.file = null;
+        }
+
+        self.rotate_backups(io);
+
+        self.current_size = 0;
+        self.last_date = RollDate.current(io);
+
+        try self.open_file(io);
+
+        std.debug.assert(self.file != null);
+    }
+
+    fn rotate_backups(self: *const RotatingWriter, io: std.Io) void {
+        std.debug.assert(self.path_length > 0);
+        std.debug.assert(self.backup_count <= rotating_backup_count_max);
+
+        if (self.backup_count == 0) {
+            return;
+        }
+
+        const directory = std.Io.Dir.cwd();
+        const path = self.path_slice();
+
+        var index: u32 = self.backup_count;
+
+        while (index > 0) : (index -= 1) {
+            std.debug.assert(index >= 1);
+            std.debug.assert(index <= self.backup_count);
+
+            var old_path_buffer: [rotating_path_with_suffix_max]u8 = undefined;
+            var new_path_buffer: [rotating_path_with_suffix_max]u8 = undefined;
+
+            const old_path = if (index == 1)
+                path
+            else
+                std.fmt.bufPrint(&old_path_buffer, "{s}.{d}", .{ path, index - 1 }) catch continue;
+
+            const new_path = std.fmt.bufPrint(&new_path_buffer, "{s}.{d}", .{ path, index }) catch continue;
+
+            if (index == self.backup_count) {
+                directory.deleteFile(io, new_path) catch {};
+            }
+
+            directory.rename(old_path, directory, new_path, io) catch {};
+        }
+    }
+
+    fn open_file(self: *RotatingWriter, io: std.Io) RotatingError!void {
+        std.debug.assert(self.path_length > 0);
+
+        const directory = std.Io.Dir.cwd();
+        const path = self.path_slice();
+
+        if (std.fs.path.dirname(path)) |parent| {
+            directory.createDir(io, parent, .default_dir) catch {};
+        }
+
+        self.file = directory.createFile(io, path, .{ .read = true, .truncate = false }) catch {
+            return error.FileOpenFailed;
+        };
+
+        const file_stat = (self.file.?).stat(io) catch {
+            return error.StatFailed;
+        };
+
+        self.current_size = @intCast(file_stat.size);
+
+        std.debug.assert(self.file != null);
+    }
+
+    fn path_slice(self: *const RotatingWriter) []const u8 {
+        std.debug.assert(self.path_length > 0);
+        std.debug.assert(self.path_length <= rotating_path_max);
+
+        return self.path[0..self.path_length];
     }
 };
 

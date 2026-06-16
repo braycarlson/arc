@@ -22,6 +22,7 @@ pub const TimeEncoding = enum(u8) {
     epoch_ns,
     iso8601,
     rfc3339,
+    rfc3339_nano,
 };
 
 pub const LevelEncoding = enum(u8) {

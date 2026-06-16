@@ -102,7 +102,7 @@ pub fn to_single_writer(writer: Writer) ?SingleWriter {
         .fd => |fd| .{ .fd = fd },
         .buffer => |buffer| .{ .buffer = buffer },
         .nop => .{ .nop = {} },
-        .tee, .locked, .buffered => null,
+        .tee, .locked, .buffered, .rotating => null,
     };
 }
 
@@ -112,7 +112,7 @@ pub fn close(io: std.Io, writer: Writer) void {
             const file = std.Io.File{ .handle = fd, .flags = .{ .nonblocking = false } };
             file.close(io);
         },
-        .stderr, .stdout, .nop, .buffer, .tee, .locked, .buffered => {},
+        .stderr, .stdout, .nop, .buffer, .tee, .locked, .buffered, .rotating => {},
     }
 }
 
