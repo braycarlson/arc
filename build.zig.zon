@@ -1,0 +1,15 @@
+.{
+    .name = .arc,
+    .version = "0.0.1",
+    .minimum_zig_version = "0.16.0",
+    .fingerprint = 0x7fe653934c28eebe,
+    .paths = .{
+        "src",
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "NOTICE",
+        "README.md",
+    },
+    .dependencies = .{},
+}

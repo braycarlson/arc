@@ -1,0 +1,59 @@
+name: ci
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Formatting
+        run: zig fmt --check build.zig src examples benchmarks tests
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Unit tests
+        run: zig build test
+      - name: Unit tests (ReleaseSafe)
+        run: zig build test -Doptimize=ReleaseSafe
+      - name: Build (ReleaseSafe)
+        run: zig build -Doptimize=ReleaseSafe
+      - name: Build (ReleaseFast)
+        run: zig build -Doptimize=ReleaseFast
+      - name: Soak test
+        run: zig build soak
+
+  thread-sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Tests under ThreadSanitizer
+        run: zig build test -Dtsan=true
+
+  fuzz:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: goto-bus-stop/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Brute-force encoder fuzzer
+        run: zig build fuzz

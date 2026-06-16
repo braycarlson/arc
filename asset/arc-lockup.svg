@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 540 200" width="540" height="200">
+  <defs></defs>
+  <svg x="10" y="38" width="132" height="112" viewBox="14 12 80 68" overflow="visible" fill="none">
+    <path d="M24 80 A56 56 0 0 1 80 24" stroke="#F7A41D" stroke-width="15" stroke-linecap="butt"></path>
+    <path d="M47 80 A33 33 0 0 1 80 47" stroke="#E07C0E" stroke-width="14" stroke-linecap="butt"></path>
+  </svg>
+  <text x="150" y="150" font-family="&#39;Space Grotesk&#39;, sans-serif" font-weight="600" font-size="150" letter-spacing="-7" fill="#17171A">arc</text>
+</svg>
