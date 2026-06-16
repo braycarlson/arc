@@ -10,6 +10,13 @@ pub fn build(builder: *std.Build) void {
         .target = target,
     });
 
+    const io = builder.graph.io;
+
+    var tests_dir = builder.build_root.handle.openDir(io, "tests", .{ .iterate = true }) catch {
+        return;
+    };
+    defer tests_dir.close(io);
+
     const exe_module = builder.createModule(.{
         .root_source_file = builder.path("examples/main.zig"),
         .target = target,
@@ -40,14 +47,6 @@ pub fn build(builder: *std.Build) void {
 
     var test_files: std.ArrayList([]const u8) = .empty;
     defer test_files.deinit(builder.allocator);
-
-    const io = builder.graph.io;
-
-    var tests_dir = builder.build_root.handle.openDir(io, "tests", .{ .iterate = true }) catch |err| {
-        std.debug.panic("failed to open tests directory: {}", .{err});
-    };
-
-    defer tests_dir.close(io);
 
     var it = tests_dir.iterate();
 
