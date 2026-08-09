@@ -4,12 +4,4 @@
     <img alt="arc" src="asset/arc-lockup.svg" width="400">
 </picture>
 
-A library for structured, leveled logging
-
-## License
-
-MIT. See [LICENSE](LICENSE).
-
-## Acknowledgments
-
-arc is a Zig port of [uber-go/zap](https://github.com/uber-go/zap). See [NOTICE](NOTICE) for attribution.
+A library for structured, leveled logging. A Zig port of [uber-go/zap](https://github.com/uber-go/zap).
