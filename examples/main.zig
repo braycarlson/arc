@@ -1,14 +1,21 @@
 const std = @import("std");
 const arc = @import("arc");
 
-pub fn main() void {
+const Logger = arc.Logger;
+
+pub fn main() !void {
     var threaded: std.Io.Threaded = .init(std.heap.page_allocator, .{});
     defer threaded.deinit();
 
     const io = threaded.io();
 
-    var logger = arc.Logger.init_production(io);
-    defer logger.sync() catch {};
+    try run_production(io);
+    try run_development(io);
+    try run_custom(io);
+}
+
+fn run_production(io: std.Io) !void {
+    var logger = Logger.init_production(io);
 
     logger.info("server starting", &.{
         arc.string("version", "0.0.1"),
@@ -16,6 +23,21 @@ pub fn main() void {
         arc.boolean("tls", true),
     }, @src());
 
+    log_requests(&logger);
+    log_checked_entry(&logger);
+    log_sugared(&logger);
+
+    logger.info("config loaded", &.{
+        arc.string("file", "config.toml"),
+        arc.boolean("valid", true),
+    }, @src());
+
+    log_level_changes(&logger);
+
+    try logger.sync();
+}
+
+fn log_requests(logger: *Logger) void {
     var request_logger = logger.named("http").with(&.{
         arc.string("service", "api"),
     });
@@ -43,41 +65,53 @@ pub fn main() void {
         arc.string("id", "abc-123"),
         arc.int32("attempt", 3),
     }, @src());
+}
 
-    if (logger.check(.info)) {
-        var ce = logger.check_entry(.info, "checked entry", @src()) orelse return;
-
-        ce.write(&.{
-            arc.string("reason", "pre-checked level"),
-        });
+fn log_checked_entry(logger: *Logger) void {
+    if (!logger.check(.info)) {
+        return;
     }
 
+    var checked: arc.CheckedEntry = undefined;
+
+    if (!logger.check_entry(&checked, .info, "checked entry", @src())) {
+        return;
+    }
+
+    checked.write(&.{
+        arc.string("reason", "pre-checked level"),
+    });
+}
+
+fn log_sugared(logger: *Logger) void {
     var sugared = logger.sugar();
-    const msg = sugared.format_message("server listening on port {d}", .{8080});
+    const message = sugared.format_message("server listening on port {d}", .{8080});
 
-    logger.info(msg, &.{}, @src());
+    logger.info(message, &.{}, @src());
+}
 
-    logger.info("config loaded", &.{
-        arc.string("file", "config.toml"),
-        arc.boolean("valid", true),
-    }, @src());
-
+fn log_level_changes(logger: *Logger) void {
     logger.info("runtime level change: disabling info", &.{}, @src());
     logger.set_level(.err);
     logger.info("this should not appear", &.{}, @src());
     logger.@"error"("this should appear", &.{}, @src());
     logger.set_level(.info);
     logger.info("info re-enabled", &.{}, @src());
+}
 
-    var dev_logger = arc.Logger.init_development(io);
-    defer dev_logger.sync() catch {};
+fn run_development(io: std.Io) !void {
+    var logger = Logger.init_development(io);
 
-    dev_logger.info("development console output", &.{
+    logger.info("development console output", &.{
         arc.string("encoding", "console"),
         arc.uint8("workers", 4),
     }, @src());
 
-    var custom = arc.Logger.init_with_config(
+    try logger.sync();
+}
+
+fn run_custom(io: std.Io) !void {
+    var logger = Logger.init_with_config(
         io,
         arc.Config.production()
             .with_level(.debug)
@@ -86,9 +120,9 @@ pub fn main() void {
             .with_thread_safety(false),
     );
 
-    defer custom.sync() catch {};
-
-    custom.debug("custom config logger", &.{
+    logger.debug("custom config logger", &.{
         arc.string("note", "no sampling, no thread safety"),
     }, @src());
+
+    try logger.sync();
 }

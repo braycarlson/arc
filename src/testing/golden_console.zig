@@ -1,7 +1,7 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const Buffer = arc.Buffer;
 const Clock = arc.Clock;
 const Config = arc.Config;
 const EncoderConfig = arc.EncoderConfig;
@@ -34,7 +34,11 @@ fn console_logger(output: *Buffer, encoder_config: EncoderConfig) Logger {
     return logger;
 }
 
-fn expect_console(expected: []const u8, encoder_config: EncoderConfig, fields: []const Field) !void {
+fn expect_console(
+    expected: []const u8,
+    encoder_config: EncoderConfig,
+    fields: []const Field,
+) !void {
     var output = Buffer.init();
     var logger = console_logger(&output, encoder_config);
 

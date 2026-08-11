@@ -1,12 +1,14 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const assert = std.debug.assert;
+
+const Buffer = arc.Buffer;
 const Clock = arc.Clock;
 const Config = arc.Config;
 const Core = arc.Core;
 const EncoderConfig = arc.EncoderConfig;
-const Encoding = arc.encoder_mod.Encoding;
+const Encoding = arc.Encoding;
 const IoCore = arc.IoCore;
 const IncreaseLevelCore = arc.IncreaseLevelCore;
 const Level = arc.Level;
@@ -123,7 +125,7 @@ test "chained with produces comma separated json" {
 
     try std.testing.expect(output.contains("\"a\":\"1\",\"b\":\"2\""));
 
-    std.debug.assert(child.context_fields_count == 2);
+    assert(child.context_fields_count == 2);
 }
 
 test "context namespace wraps later fields" {
@@ -141,7 +143,7 @@ test "context namespace wraps later fields" {
 
     try std.testing.expect(output.contains("\"ns\":{\"a\":\"1\",\"b\":\"2\"}"));
 
-    std.debug.assert(child.context_fields_count == 2);
+    assert(child.context_fields_count == 2);
 }
 
 test "object field encodes nested marshaler" {
@@ -161,7 +163,7 @@ test "object field encodes nested marshaler" {
             "\"address\":{\"city\":\"denver\",\"arc\":80014}}",
     ));
 
-    std.debug.assert(output.contains("alice"));
+    assert(output.contains("alice"));
 }
 
 test "inline object merges fields into parent" {
@@ -179,7 +181,7 @@ test "inline object merges fields into parent" {
         "\"city\":\"boulder\",\"arc\":80301,\"trailing\":\"field\"",
     ));
 
-    std.debug.assert(output.contains("boulder"));
+    assert(output.contains("boulder"));
 }
 
 test "array field encodes array marshaler" {
@@ -192,7 +194,7 @@ test "array field encodes array marshaler" {
 
     try std.testing.expect(output.contains("\"tags\":[\"red\",\"green\",\"blue\"]"));
 
-    std.debug.assert(output.contains("green"));
+    assert(output.contains("green"));
 }
 
 test "reflect serializes arbitrary struct" {
@@ -207,7 +209,7 @@ test "reflect serializes arbitrary struct" {
         "\"metrics\":{\"cpu\":0.5,\"cores\":8,\"active\":true,\"name\":\"node-1\"}",
     ));
 
-    std.debug.assert(output.contains("node-1"));
+    assert(output.contains("node-1"));
 }
 
 test "reflect serializes slice and enum" {
@@ -225,7 +227,7 @@ test "reflect serializes slice and enum" {
     try std.testing.expect(output.contains("\"nums\":[1,2,3]"));
     try std.testing.expect(output.contains("\"color\":\"green\""));
 
-    std.debug.assert(output.contains("green"));
+    assert(output.contains("green"));
 }
 
 test "stringer logs to_string output" {
@@ -238,7 +240,7 @@ test "stringer logs to_string output" {
 
     try std.testing.expect(output.contains("\"version\":\"v1.2.3\""));
 
-    std.debug.assert(output.contains("v1.2.3"));
+    assert(output.contains("v1.2.3"));
 }
 
 test "dict field encodes inline object" {
@@ -252,7 +254,7 @@ test "dict field encodes inline object" {
 
     try std.testing.expect(output.contains("\"cfg\":{\"host\":\"localhost\",\"port\":8080}"));
 
-    std.debug.assert(output.contains("localhost"));
+    assert(output.contains("localhost"));
 }
 
 test "byte_string encodes raw text not base64" {
@@ -263,7 +265,7 @@ test "byte_string encodes raw text not base64" {
 
     try std.testing.expect(output.contains("\"payload\":\"hello\""));
 
-    std.debug.assert(output.contains("hello"));
+    assert(output.contains("hello"));
 }
 
 test "time_ns preserves sub second precision" {
@@ -274,7 +276,7 @@ test "time_ns preserves sub second precision" {
 
     try std.testing.expect(output.contains("\"at\":1700000000.123456789"));
 
-    std.debug.assert(output.contains("1700000000.123456789"));
+    assert(output.contains("1700000000.123456789"));
 }
 
 test "uints and durations encode as arrays" {
@@ -289,11 +291,12 @@ test "uints and durations encode as arrays" {
     try std.testing.expect(output.contains("\"counts\":[1,2,3]"));
     try std.testing.expect(output.contains("\"waits\":[1,2]"));
 
-    std.debug.assert(output.contains("counts"));
+    assert(output.contains("counts"));
 }
 
 test "duration string composes units" {
     var output = Buffer.init();
+
     var logger = config_logger(
         &output,
         EncoderConfig.production().with_duration_encoding(.string),
@@ -309,11 +312,12 @@ test "duration string composes units" {
     try std.testing.expect(output.contains("\"b\":\"1h1m1s\""));
     try std.testing.expect(output.contains("\"c\":\"1.5s\""));
 
-    std.debug.assert(output.contains("1m30s"));
+    assert(output.contains("1m30s"));
 }
 
 test "iso8601 honors time offset" {
     var output = Buffer.init();
+
     var logger = config_logger(
         &output,
         EncoderConfig.production().with_time_encoding(.iso8601).with_time_offset(330),
@@ -323,11 +327,12 @@ test "iso8601 honors time offset" {
 
     try std.testing.expect(output.contains("+05:30"));
 
-    std.debug.assert(output.contains("+05:30"));
+    assert(output.contains("+05:30"));
 }
 
 test "iso8601 renders pre-1970 timestamps with full precision" {
     var output = Buffer.init();
+
     var logger = config_logger(
         &output,
         EncoderConfig.production().with_time_encoding(.iso8601),
@@ -343,13 +348,16 @@ test "iso8601 renders pre-1970 timestamps with full precision" {
     try std.testing.expect(output.contains("\"epoch_minus_one\":\"1969-12-31T23:59:59Z\""));
     try std.testing.expect(output.contains("\"half_before_epoch\":\"1969-12-31T23:59:59.5Z\""));
     try std.testing.expect(output.contains("\"nineteen_hundred\":\"1900-01-01T00:00:00Z\""));
-    try std.testing.expect(output.contains("\"nanos_after_epoch\":\"1970-01-01T00:00:00.123456789Z\""));
+    const expected = "\"nanos_after_epoch\":\"1970-01-01T00:00:00.123456789Z\"";
 
-    std.debug.assert(output.contains("1970-01-01T00:00:00.123456789Z"));
+    try std.testing.expect(output.contains(expected));
+
+    assert(output.contains("1970-01-01T00:00:00.123456789Z"));
 }
 
 test "uintptr and times encode" {
     var output = Buffer.init();
+
     var logger = config_logger(
         &output,
         EncoderConfig.production().with_time_encoding(.epoch_ns),
@@ -363,7 +371,7 @@ test "uintptr and times encode" {
     try std.testing.expect(output.contains("\"addr\":57005"));
     try std.testing.expect(output.contains("\"stamps\":[1000000000,2000000000]"));
 
-    std.debug.assert(output.contains("57005"));
+    assert(output.contains("57005"));
 }
 
 test "non finite floats encode as json strings" {
@@ -380,7 +388,7 @@ test "non finite floats encode as json strings" {
     try std.testing.expect(output.contains("\"pos\":\"+Inf\""));
     try std.testing.expect(output.contains("\"neg\":\"-Inf\""));
 
-    std.debug.assert(output.contains("NaN"));
+    assert(output.contains("NaN"));
 }
 
 test "err_from uses error name" {
@@ -393,11 +401,12 @@ test "err_from uses error name" {
 
     try std.testing.expect(output.contains("\"error\":\"ConnectionRefused\""));
 
-    std.debug.assert(output.contains("ConnectionRefused"));
+    assert(output.contains("ConnectionRefused"));
 }
 
 test "dpanic logs even when level disabled" {
     var output = Buffer.init();
+
     var logger = Logger.init_with_config(
         std.testing.io,
         base_config()
@@ -414,7 +423,7 @@ test "dpanic logs even when level disabled" {
 
     try std.testing.expect(output.contains("forced"));
 
-    std.debug.assert(output.contains("forced"));
+    assert(output.contains("forced"));
 }
 
 test "init_with_core hosts tee core" {
@@ -439,11 +448,13 @@ test "init_with_core hosts tee core" {
     try std.testing.expect(output_a.contains("fanout"));
     try std.testing.expect(output_b.contains("fanout"));
 
-    std.debug.assert(output_a.contains("fanout"));
+    assert(output_a.contains("fanout"));
 }
 
 test "init_with_core hosts observer" {
-    var observer = Observer.init(.debug);
+    var observer: Observer = undefined;
+
+    observer.init(.debug);
 
     var logger = Logger.init_with_core(
         std.testing.io,
@@ -456,9 +467,9 @@ test "init_with_core hosts observer" {
     logger.info("recorded", &.{}, @src());
     logger.warn("again", &.{}, @src());
 
-    try std.testing.expectEqual(@as(u32, 2), observer.len());
+    try std.testing.expectEqual(@as(u32, 2), observer.count());
 
-    std.debug.assert(observer.len() == 2);
+    assert(observer.count() == 2);
 }
 
 test "init_with_core hosts increase level core" {
@@ -483,8 +494,8 @@ test "init_with_core hosts increase level core" {
     logger.@"error"("shown", &.{}, @src());
     try std.testing.expect(output.contains("shown"));
 
-    std.debug.assert(output.contains("shown"));
-    std.debug.assert(!output.contains("hidden"));
+    assert(output.contains("shown"));
+    assert(!output.contains("hidden"));
 }
 
 test "sugar formats and structures" {
@@ -503,7 +514,7 @@ test "sugar formats and structures" {
     try std.testing.expect(output.contains("free_mb"));
     try std.testing.expect(output.contains("128"));
 
-    std.debug.assert(output.contains("free_mb"));
+    assert(output.contains("free_mb"));
 }
 
 test "buffered writer flusher thread flushes periodically" {
@@ -514,7 +525,7 @@ test "buffered writer flusher thread flushes periodically" {
 
     try buffered.write(std.testing.io, "periodic-data");
 
-    std.Io.sleep(std.testing.io, std.Io.Duration.fromNanoseconds(120_000_000), .awake) catch {};
+    try std.Io.sleep(std.testing.io, std.Io.Duration.fromNanoseconds(120_000_000), .awake);
 
     buffered.mutex.lockUncancelable(std.testing.io);
     const pending_after = buffered.pending();
@@ -525,7 +536,7 @@ test "buffered writer flusher thread flushes periodically" {
     try std.testing.expectEqual(@as(u32, 0), pending_after);
     try std.testing.expect(output.contains("periodic-data"));
 
-    std.debug.assert(output.contains("periodic-data"));
+    assert(output.contains("periodic-data"));
 }
 
 test "buffered writer sink flushes through logger" {
@@ -545,5 +556,5 @@ test "buffered writer sink flushes through logger" {
     try logger.sync();
     try std.testing.expect(output.contains("buffered"));
 
-    std.debug.assert(output.contains("buffered"));
+    assert(output.contains("buffered"));
 }

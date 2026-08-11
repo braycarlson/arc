@@ -6,18 +6,15 @@ const level_mod = @import("core/level.zig");
 const sampler_mod = @import("core/sampler.zig");
 const writer_mod = @import("io/writer.zig");
 
+const assert = std.debug.assert;
+
 const Encoding = encoder_mod.Encoding;
 const EncoderConfig = encoder_config_mod.EncoderConfig;
 const Level = level_mod.Level;
 const TerminalAction = checked_mod.TerminalAction;
 const Writer = writer_mod.Writer;
 
-pub const SamplingConfig = struct {
-    enabled: bool,
-    tick_ns: i64,
-    initial: u64,
-    thereafter: u64,
-};
+pub const SamplingConfig = sampler_mod.SamplingConfig;
 
 pub const Config = struct {
     level: Level,
@@ -26,12 +23,12 @@ pub const Config = struct {
     writer: Writer,
     error_output: Writer,
     sampling: SamplingConfig,
-    add_caller: bool,
-    add_stacktrace_level: Level,
+    caller_enabled: bool,
+    stacktrace_level_min: Level,
     is_development: bool,
     thread_safe: bool,
-    on_dpanic: TerminalAction,
-    on_fatal: TerminalAction,
+    dpanic_action: TerminalAction,
+    fatal_action: TerminalAction,
 
     pub fn production() Config {
         return .{
@@ -43,15 +40,15 @@ pub const Config = struct {
             .sampling = .{
                 .enabled = true,
                 .tick_ns = sampler_mod.tick_ns_default,
-                .initial = 100,
+                .first = 100,
                 .thereafter = 100,
             },
-            .add_caller = true,
-            .add_stacktrace_level = .err,
+            .caller_enabled = true,
+            .stacktrace_level_min = .err,
             .is_development = false,
             .thread_safe = true,
-            .on_dpanic = .write_then_nop,
-            .on_fatal = .write_then_fatal,
+            .dpanic_action = .write_then_nop,
+            .fatal_action = .write_then_fatal,
         };
     }
 
@@ -65,15 +62,15 @@ pub const Config = struct {
             .sampling = .{
                 .enabled = false,
                 .tick_ns = sampler_mod.tick_ns_default,
-                .initial = 100,
+                .first = 100,
                 .thereafter = 100,
             },
-            .add_caller = true,
-            .add_stacktrace_level = .warn,
+            .caller_enabled = true,
+            .stacktrace_level_min = .warn,
             .is_development = true,
             .thread_safe = false,
-            .on_dpanic = .write_then_panic,
-            .on_fatal = .write_then_fatal,
+            .dpanic_action = .write_then_panic,
+            .fatal_action = .write_then_fatal,
         };
     }
 
@@ -87,19 +84,28 @@ pub const Config = struct {
             .sampling = .{
                 .enabled = false,
                 .tick_ns = sampler_mod.tick_ns_default,
-                .initial = 100,
+                .first = 100,
                 .thereafter = 100,
             },
-            .add_caller = false,
-            .add_stacktrace_level = .fatal,
+            .caller_enabled = false,
+            .stacktrace_level_min = .fatal,
             .is_development = false,
             .thread_safe = false,
-            .on_dpanic = .write_then_nop,
-            .on_fatal = .write_then_fatal,
+            .dpanic_action = .write_then_nop,
+            .fatal_action = .write_then_fatal,
         };
     }
 
+    pub fn is_valid(self: *const Config) bool {
+        if (self.sampling.enabled and self.sampling.tick_ns <= 0) return false;
+        if (self.sampling.enabled and self.sampling.first == 0) return false;
+
+        return true;
+    }
+
     pub fn with_level(self: *const Config, at_level: Level) Config {
+        assert(self.is_valid());
+
         var config = self.*;
         config.level = at_level;
 
@@ -107,6 +113,8 @@ pub const Config = struct {
     }
 
     pub fn with_encoding(self: *const Config, encoding: Encoding) Config {
+        assert(self.is_valid());
+
         var config = self.*;
         config.encoding = encoding;
 
@@ -114,6 +122,8 @@ pub const Config = struct {
     }
 
     pub fn with_writer(self: *const Config, writer: Writer) Config {
+        assert(self.is_valid());
+
         var config = self.*;
         config.writer = writer;
 
@@ -121,6 +131,8 @@ pub const Config = struct {
     }
 
     pub fn with_error_output(self: *const Config, writer: Writer) Config {
+        assert(self.is_valid());
+
         var config = self.*;
         config.error_output = writer;
 
@@ -128,7 +140,9 @@ pub const Config = struct {
     }
 
     pub fn with_encoder_config(self: *const Config, encoder_config: EncoderConfig) Config {
-        std.debug.assert(encoder_config.console_separator != 0);
+        assert(self.is_valid());
+
+        assert(encoder_config.console_separator != 0);
 
         var config = self.*;
         config.encoder_config = encoder_config;
@@ -138,24 +152,30 @@ pub const Config = struct {
 
     pub fn with_sampling(self: *const Config, sampling: SamplingConfig) Config {
         if (sampling.enabled) {
-            std.debug.assert(sampling.tick_ns > 0);
-            std.debug.assert(sampling.initial > 0);
+            assert(sampling.tick_ns > 0);
+            assert(sampling.first > 0);
         }
 
         var config = self.*;
         config.sampling = sampling;
 
+        assert(config.is_valid());
+
         return config;
     }
 
     pub fn without_caller(self: *const Config) Config {
+        assert(self.is_valid());
+
         var config = self.*;
-        config.add_caller = false;
+        config.caller_enabled = false;
 
         return config;
     }
 
     pub fn without_sampling(self: *const Config) Config {
+        assert(self.is_valid());
+
         var config = self.*;
         config.sampling.enabled = false;
 
@@ -163,13 +183,17 @@ pub const Config = struct {
     }
 
     pub fn with_stacktrace_level(self: *const Config, at_level: Level) Config {
+        assert(self.is_valid());
+
         var config = self.*;
-        config.add_stacktrace_level = at_level;
+        config.stacktrace_level_min = at_level;
 
         return config;
     }
 
     pub fn with_thread_safety(self: *const Config, enabled: bool) Config {
+        assert(self.is_valid());
+
         var config = self.*;
         config.thread_safe = enabled;
 
@@ -177,16 +201,126 @@ pub const Config = struct {
     }
 
     pub fn with_dpanic_hook(self: *const Config, action: TerminalAction) Config {
+        assert(self.is_valid());
+
         var config = self.*;
-        config.on_dpanic = action;
+        config.dpanic_action = action;
 
         return config;
     }
 
     pub fn with_fatal_hook(self: *const Config, action: TerminalAction) Config {
+        assert(self.is_valid());
+
         var config = self.*;
-        config.on_fatal = action;
+        config.fatal_action = action;
 
         return config;
     }
 };
+
+const testing = std.testing;
+
+test "a production config carries the production defaults" {
+    const cfg = Config.production();
+
+    try testing.expectEqual(Level.info, cfg.level);
+    try testing.expect(cfg.caller_enabled);
+    try testing.expect(cfg.sampling.enabled);
+    try testing.expect(cfg.thread_safe);
+    try testing.expect(!cfg.is_development);
+
+    assert(cfg.sampling.tick_ns > 0);
+    assert(cfg.sampling.first > 0);
+}
+
+test "a development config carries the development defaults" {
+    const cfg = Config.development();
+
+    try testing.expectEqual(Level.debug, cfg.level);
+    try testing.expect(cfg.caller_enabled);
+    try testing.expect(!cfg.sampling.enabled);
+    try testing.expect(!cfg.thread_safe);
+    try testing.expect(cfg.is_development);
+
+    assert(@intFromEnum(cfg.level) == 0);
+    assert(cfg.is_development);
+}
+
+test "a nop config disables every output" {
+    const cfg = Config.nop();
+
+    try testing.expectEqual(Level.fatal, cfg.level);
+    try testing.expect(!cfg.caller_enabled);
+    try testing.expect(!cfg.sampling.enabled);
+    try testing.expect(!cfg.thread_safe);
+    try testing.expect(!cfg.is_development);
+
+    assert(@intFromEnum(cfg.level) == @intFromEnum(Level.fatal));
+    assert(!cfg.caller_enabled);
+}
+
+test "setting a level overrides the one the config carried" {
+    const cfg = Config.production().with_level(.debug);
+
+    try testing.expectEqual(Level.debug, cfg.level);
+    try testing.expect(cfg.caller_enabled);
+
+    assert(@intFromEnum(cfg.level) == 0);
+    assert(cfg.thread_safe);
+}
+
+test "dropping sampling clears the sampling settings" {
+    const cfg = Config.production().without_sampling();
+
+    try testing.expect(!cfg.sampling.enabled);
+    try testing.expectEqual(Level.info, cfg.level);
+
+    assert(!cfg.sampling.enabled);
+    assert(cfg.caller_enabled);
+}
+
+test "dropping the caller clears caller reporting" {
+    const cfg = Config.production().without_caller();
+
+    try testing.expect(!cfg.caller_enabled);
+    try testing.expectEqual(Level.info, cfg.level);
+
+    assert(!cfg.caller_enabled);
+    assert(cfg.thread_safe);
+}
+
+test "setting thread safety toggles the locking the config asks for" {
+    const cfg = Config.production().with_thread_safety(false);
+
+    try testing.expect(!cfg.thread_safe);
+    try testing.expectEqual(Level.info, cfg.level);
+
+    assert(!cfg.thread_safe);
+    assert(cfg.caller_enabled);
+}
+
+test "setting a stacktrace level overrides the threshold the config carried" {
+    const cfg = Config.production().with_stacktrace_level(.fatal);
+
+    try testing.expectEqual(Level.fatal, cfg.stacktrace_level_min);
+
+    assert(@intFromEnum(cfg.stacktrace_level_min) == @intFromEnum(Level.fatal));
+    assert(cfg.caller_enabled);
+}
+
+test "chained builder calls each keep the previous change" {
+    const cfg = Config.production()
+        .with_level(.debug)
+        .without_sampling()
+        .with_thread_safety(false)
+        .with_stacktrace_level(.fatal);
+
+    try testing.expectEqual(Level.debug, cfg.level);
+    try testing.expect(!cfg.sampling.enabled);
+    try testing.expect(!cfg.thread_safe);
+    try testing.expectEqual(Level.fatal, cfg.stacktrace_level_min);
+
+    assert(@intFromEnum(cfg.level) == 0);
+    assert(!cfg.sampling.enabled);
+}

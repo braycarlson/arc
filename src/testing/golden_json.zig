@@ -1,12 +1,11 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const Buffer = arc.Buffer;
 const Clock = arc.Clock;
 const Config = arc.Config;
 const EncoderConfig = arc.EncoderConfig;
 const Field = arc.Field;
-const Level = arc.Level;
 const Logger = arc.Logger;
 
 const fixed_timestamp_s: i64 = 1_700_000_000;
@@ -54,7 +53,11 @@ fn expect_json(expected: []const u8, fields: []const Field) !void {
     try std.testing.expectEqualStrings(expected, output.contents());
 }
 
-fn expect_json_config(expected: []const u8, encoder_config: EncoderConfig, fields: []const Field) !void {
+fn expect_json_config(
+    expected: []const u8,
+    encoder_config: EncoderConfig,
+    fields: []const Field,
+) !void {
     var output = Buffer.init();
     var logger = config_logger(&output, encoder_config);
 
@@ -111,14 +114,16 @@ test "golden: u64 max" {
 
 test "golden: integer width variants share encoding" {
     try expect_json(
-        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\",\"a\":1,\"b\":2,\"c\":3,\"d\":4}\n",
+        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\"" ++
+            ",\"a\":1,\"b\":2,\"c\":3,\"d\":4}\n",
         &.{ arc.int8("a", 1), arc.int16("b", 2), arc.int32("c", 3), arc.int64("d", 4) },
     );
 }
 
 test "golden: unsigned width variants share encoding" {
     try expect_json(
-        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\",\"a\":1,\"b\":2,\"c\":3,\"d\":4}\n",
+        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\"" ++
+            ",\"a\":1,\"b\":2,\"c\":3,\"d\":4}\n",
         &.{ arc.uint8("a", 1), arc.uint16("b", 2), arc.uint32("c", 3), arc.uint64("d", 4) },
     );
 }
@@ -173,7 +178,7 @@ test "golden: duration seconds default" {
 test "golden: duration millis" {
     try expect_json_config(
         "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\",\"d\":1500}\n",
-        EncoderConfig.production().with_duration_encoding(.millis),
+        EncoderConfig.production().with_duration_encoding(.milliseconds),
         &.{arc.duration_ns("d", 1_500_000_000)},
     );
 }
@@ -181,7 +186,7 @@ test "golden: duration millis" {
 test "golden: duration nanos" {
     try expect_json_config(
         "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\",\"d\":1500000000}\n",
-        EncoderConfig.production().with_duration_encoding(.nanos),
+        EncoderConfig.production().with_duration_encoding(.nanoseconds),
         &.{arc.duration_ns("d", 1_500_000_000)},
     );
 }
@@ -189,7 +194,8 @@ test "golden: duration nanos" {
 test "golden: duration string units" {
     try expect_json_config(
         "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\"," ++
-            "\"a\":\"1m30s\",\"b\":\"1h1m1s\",\"c\":\"1.5s\",\"d\":\"500ms\",\"e\":\"250us\",\"f\":\"7ns\"}\n",
+            "\"a\":\"1m30s\",\"b\":\"1h1m1s\",\"c\":\"1.5s\"" ++
+            ",\"d\":\"500ms\",\"e\":\"250us\",\"f\":\"7ns\"}\n",
         EncoderConfig.production().with_duration_encoding(.string),
         &.{
             arc.duration_ns("a", 90_000_000_000),
@@ -239,7 +245,8 @@ test "golden: named error" {
 
 test "golden: err_from uses error name" {
     try expect_json(
-        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\",\"error\":\"ConnectionRefused\"}\n",
+        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\"" ++
+            ",\"error\":\"ConnectionRefused\"}\n",
         &.{arc.err_from(error.ConnectionRefused)},
     );
 }
@@ -521,7 +528,7 @@ test "golden: truncation notice" {
 test "golden: caller short path is deterministic" {
     try std.testing.expectEqualStrings(
         "core/entry.zig",
-        arc.entry_mod.caller_short_path("/home/user/src/core/entry.zig"),
+        arc.caller_short_path("/home/user/src/core/entry.zig"),
     );
 }
 
@@ -606,7 +613,8 @@ test "golden: reflect slice and enum" {
     const color: Color = .green;
 
     try expect_json(
-        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\",\"nums\":[1,2,3],\"color\":\"green\"}\n",
+        "{\"level\":\"info\",\"ts\":1700000000,\"msg\":\"hello\"" ++
+            ",\"nums\":[1,2,3],\"color\":\"green\"}\n",
         &.{ arc.reflect("nums", &nums), arc.reflect("color", &color) },
     );
 }

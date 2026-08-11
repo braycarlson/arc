@@ -1,7 +1,9 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const assert = std.debug.assert;
+
+const Buffer = arc.Buffer;
 const BufferedWriter = arc.BufferedWriter;
 const Clock = arc.Clock;
 const Config = arc.Config;
@@ -9,7 +11,7 @@ const HookSet = arc.HookSet;
 const Logger = arc.Logger;
 
 const thread_count: u32 = 8;
-const per_thread: u32 = 200;
+const thread_events_count: u32 = 200;
 
 const Worker = struct {
     logger: *Logger,
@@ -59,7 +61,7 @@ test "concurrent logging through a thread-safe core loses no writes" {
     hooks.add(.{ .counter = &counter });
     logger.set_hooks(hooks);
 
-    var worker = Worker{ .logger = &logger, .iterations = per_thread };
+    var worker = Worker{ .logger = &logger, .iterations = thread_events_count };
 
     var threads: [thread_count]std.Thread = undefined;
 
@@ -71,11 +73,11 @@ test "concurrent logging through a thread-safe core loses no writes" {
         thread.join();
     }
 
-    const expected: u64 = @as(u64, thread_count) * @as(u64, per_thread);
+    const expected: u64 = @as(u64, thread_count) * @as(u64, thread_events_count);
 
     try std.testing.expectEqual(expected, counter.load(.monotonic));
 
-    std.debug.assert(counter.load(.monotonic) == expected);
+    assert(counter.load(.monotonic) == expected);
 }
 
 test "buffered writer flush thread starts, flushes, and stops cleanly" {
@@ -93,7 +95,7 @@ test "buffered writer flush thread starts, flushes, and stops cleanly" {
     try std.testing.expect(output.contains("second line"));
     try std.testing.expectEqual(@as(u64, 0), buffered.error_count());
 
-    std.debug.assert(buffered.error_count() == 0);
+    assert(buffered.error_count() == 0);
 }
 
 test "concurrent oversized entries accumulate the shared drop counter" {
@@ -139,7 +141,7 @@ test "concurrent oversized entries accumulate the shared drop counter" {
 
     try std.testing.expectEqual(expected, drops.load(.monotonic));
 
-    std.debug.assert(drops.load(.monotonic) == expected);
+    assert(drops.load(.monotonic) == expected);
 }
 
 test "concurrent writes through a thread-safe core are never interleaved" {
@@ -183,7 +185,13 @@ test "concurrent writes through a thread-safe core are never interleaved" {
             continue;
         }
 
-        const parsed = try std.json.parseFromSlice(std.json.Value, std.testing.allocator, line, .{});
+        const parsed = try std.json.parseFromSlice(
+            std.json.Value,
+            std.testing.allocator,
+            line,
+            .{},
+        );
+
         defer parsed.deinit();
 
         try std.testing.expect(parsed.value == .object);
@@ -194,5 +202,5 @@ test "concurrent writes through a thread-safe core are never interleaved" {
 
     try std.testing.expectEqual(expected, line_count);
 
-    std.debug.assert(line_count == expected);
+    assert(line_count == expected);
 }

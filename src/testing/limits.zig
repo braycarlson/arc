@@ -1,7 +1,9 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const assert = std.debug.assert;
+
+const Buffer = arc.Buffer;
 const Clock = arc.Clock;
 const Config = arc.Config;
 const Field = arc.Field;
@@ -35,7 +37,7 @@ test "exactly fields_max fields encode to valid json with all present" {
     var index: usize = 0;
 
     while (index < arc.fields_max) : (index += 1) {
-        const key = std.fmt.bufPrint(&keys[index], "k{d}", .{index}) catch unreachable;
+        const key = try std.fmt.bufPrint(&keys[index], "k{d}", .{index});
         fields[index] = arc.int(key, @intCast(index));
     }
 
@@ -47,13 +49,14 @@ test "exactly fields_max fields encode to valid json with all present" {
         std.mem.trimEnd(u8, output.contents(), "\n"),
         .{},
     );
+
     defer parsed.deinit();
 
     try std.testing.expect(parsed.value == .object);
     try std.testing.expect(output.contains("\"k0\":0"));
     try std.testing.expect(output.contains("\"k31\":31"));
 
-    std.debug.assert(output.contains("\"k31\":31"));
+    assert(output.contains("\"k31\":31"));
 }
 
 test "scopes_max named scopes compose into the logger name" {
@@ -74,19 +77,19 @@ test "scopes_max named scopes compose into the logger name" {
 
     try std.testing.expect(output.contains("s.s.s.s.s.s.s.s"));
 
-    std.debug.assert(logger.name().len == expected_length);
+    assert(logger.name().len == expected_length);
 }
 
-test "name_max length scope fits" {
+test "name_bytes_max length scope fits" {
     var output = Buffer.init();
     var base = limits_logger(&output);
 
-    var scope: [arc.name_max]u8 = undefined;
+    var scope: [arc.name_bytes_max]u8 = undefined;
     @memset(&scope, 'x');
 
     const logger = base.named(&scope);
 
-    try std.testing.expectEqual(@as(usize, arc.name_max), logger.name().len);
+    try std.testing.expectEqual(@as(usize, arc.name_bytes_max), logger.name().len);
 
-    std.debug.assert(logger.name().len == arc.name_max);
+    assert(logger.name().len == arc.name_bytes_max);
 }

@@ -1,145 +1,251 @@
 const std = @import("std");
 
-pub fn build(builder: *std.Build) void {
-    const target = builder.standardTargetOptions(.{});
-    const optimize = builder.standardOptimizeOption(.{});
-    const tsan = builder.option(bool, "tsan", "Build the test suite with ThreadSanitizer") orelse false;
+const assert = std.debug.assert;
 
-    const arc_module = builder.addModule("arc", .{
-        .root_source_file = builder.path("src/arc.zig"),
-        .target = target,
-    });
+const Steps = struct {
+    bench: *std.Build.Step,
+    check: *std.Build.Step,
+    ci: *std.Build.Step,
+    fuzz: *std.Build.Step,
+    fuzz_build: *std.Build.Step,
+    fuzz_smoke: *std.Build.Step,
+    run: *std.Build.Step,
+    soak: *std.Build.Step,
+    test_all: *std.Build.Step,
+    test_fmt: *std.Build.Step,
+    test_integration: *std.Build.Step,
+    test_unit: *std.Build.Step,
+};
 
-    const io = builder.graph.io;
+const format_paths = [_][]const u8{ "build.zig", "benchmarks", "examples", "src" };
 
-    var tests_dir = builder.build_root.handle.openDir(io, "tests", .{ .iterate = true }) catch {
-        return;
+comptime {
+    assert(format_paths.len > 0);
+}
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const tsan = b.option(bool, "tsan", "Build the test suites with ThreadSanitizer") orelse false;
+
+    const steps = Steps{
+        .bench = b.step("bench", "Run the benchmark suite"),
+        .check = b.step("check", "Compile every artifact without running it"),
+        .ci = b.step("ci", "Run formatting, compilation, and every test suite"),
+        .fuzz = b.step("fuzz", "Run a fuzzer: -- <fuzzer> [seed] [events]"),
+        .fuzz_build = b.step("fuzz:build", "Compile the fuzzer without running it"),
+        .fuzz_smoke = b.step("fuzz:smoke", "Run every fuzzer briefly with a fixed seed"),
+        .run = b.step("run", "Run the example application"),
+        .soak = b.step("soak", "Run the long-running soak test"),
+        .test_all = b.step("test", "Run every test suite and the formatting check"),
+        .test_fmt = b.step("test:fmt", "Check that every source file is formatted"),
+        .test_integration = b.step("test:integration", "Run the cross-cutting test suites"),
+        .test_unit = b.step("test:unit", "Run the colocated unit tests and the tidy law"),
     };
-    defer tests_dir.close(io);
 
-    const exe_module = builder.createModule(.{
-        .root_source_file = builder.path("examples/main.zig"),
+    const module = add_module(b, target, optimize);
+
+    add_format(b, &steps);
+    add_example(b, &steps, module, target, optimize);
+    add_unit_tests(b, &steps, target, optimize, tsan);
+    add_integration_tests(b, &steps, module, target, optimize, tsan);
+    add_bench(b, &steps, module, target, optimize);
+    add_soak(b, &steps, module, target, optimize);
+    add_fuzz(b, &steps, target, optimize);
+
+    steps.ci.dependOn(steps.test_fmt);
+    steps.ci.dependOn(steps.check);
+    steps.ci.dependOn(steps.test_unit);
+    steps.ci.dependOn(steps.test_integration);
+    steps.ci.dependOn(steps.fuzz_smoke);
+
+    b.default_step.dependOn(steps.check);
+}
+
+fn add_module(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) *std.Build.Module {
+    return b.addModule("arc", .{
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
+}
 
-    exe_module.addImport("arc", arc_module);
-
-    const exe = builder.addExecutable(.{
-        .name = "arc",
-        .root_module = exe_module,
+fn add_format(b: *std.Build, steps: *const Steps) void {
+    const fmt = b.addFmt(.{
+        .paths = &format_paths,
+        .check = true,
     });
 
-    builder.installArtifact(exe);
+    steps.test_fmt.dependOn(&fmt.step);
+    steps.test_all.dependOn(&fmt.step);
+}
 
-    const run_step = builder.step("run", "Run the application");
-    const run_cmd = builder.addRunArtifact(exe);
+fn add_example(
+    b: *std.Build,
+    steps: *const Steps,
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const exe = b.addExecutable(.{
+        .name = "arc",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("examples/main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "arc", .module = module }},
+        }),
+    });
 
-    run_cmd.step.dependOn(builder.getInstallStep());
+    b.installArtifact(exe);
 
-    if (builder.args) |args| {
-        run_cmd.addArgs(args);
-    }
+    const run = b.addRunArtifact(exe);
 
-    run_step.dependOn(&run_cmd.step);
+    run.setCwd(b.path("."));
+    run.step.dependOn(b.getInstallStep());
 
-    const test_step = builder.step("test", "Run unit tests");
+    if (b.args) |args| run.addArgs(args);
 
-    var test_files: std.ArrayList([]const u8) = .empty;
-    defer test_files.deinit(builder.allocator);
+    steps.run.dependOn(&run.step);
+    steps.check.dependOn(&exe.step);
+}
 
-    var it = tests_dir.iterate();
-
-    while (it.next(io) catch |err| {
-        std.debug.panic("failed to iterate tests directory: {}", .{err});
-    }) |entry| {
-        if (entry.kind != .file) continue;
-        if (!std.mem.startsWith(u8, entry.name, "test_")) continue;
-        if (!std.mem.endsWith(u8, entry.name, ".zig")) continue;
-
-        const full_path = std.fmt.allocPrint(builder.allocator, "tests/{s}", .{entry.name}) catch |err| {
-            std.debug.panic("failed to allocate test path: {}", .{err});
-        };
-
-        test_files.append(builder.allocator, full_path) catch |err| {
-            std.debug.panic("failed to append test path: {}", .{err});
-        };
-    }
-
-    std.mem.sort([]const u8, test_files.items, {}, struct {
-        fn lessThan(_: void, a: []const u8, b: []const u8) bool {
-            return std.mem.lessThan(u8, a, b);
-        }
-    }.lessThan);
-
-    for (test_files.items) |test_file| {
-        const t_module = builder.createModule(.{
-            .root_source_file = builder.path(test_file),
+fn add_unit_tests(
+    b: *std.Build,
+    steps: *const Steps,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    tsan: bool,
+) void {
+    const unit = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/unit_tests.zig"),
             .target = target,
             .optimize = optimize,
             .sanitize_thread = if (tsan) true else null,
-        });
-        t_module.addImport("arc", arc_module);
-
-        const t = builder.addTest(.{
-            .root_module = t_module,
-        });
-
-        const run_t = builder.addRunArtifact(t);
-        run_t.step.name = test_file;
-
-        test_step.dependOn(&run_t.step);
-    }
-
-    const bench_module = builder.createModule(.{
-        .root_source_file = builder.path("benchmarks/bench.zig"),
-        .target = target,
-        .optimize = .ReleaseFast,
+        }),
+        .filters = b.args orelse &.{},
     });
 
-    bench_module.addImport("arc", arc_module);
+    const run = b.addRunArtifact(unit);
 
-    const bench_exe = builder.addExecutable(.{
+    run.setCwd(b.path("."));
+
+    steps.test_unit.dependOn(&run.step);
+    steps.test_all.dependOn(&run.step);
+    steps.check.dependOn(&unit.step);
+}
+
+fn add_integration_tests(
+    b: *std.Build,
+    steps: *const Steps,
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    tsan: bool,
+) void {
+    const integration = b.addTest(.{
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/integration_tests.zig"),
+            .target = target,
+            .optimize = optimize,
+            .sanitize_thread = if (tsan) true else null,
+            .imports = &.{.{ .name = "arc", .module = module }},
+        }),
+        .filters = b.args orelse &.{},
+    });
+
+    const run = b.addRunArtifact(integration);
+
+    run.setCwd(b.path("."));
+
+    steps.test_integration.dependOn(&run.step);
+    steps.test_all.dependOn(&run.step);
+    steps.check.dependOn(&integration.step);
+}
+
+fn add_bench(
+    b: *std.Build,
+    steps: *const Steps,
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const exe = b.addExecutable(.{
         .name = "bench",
-        .root_module = bench_module,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("benchmarks/bench.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "arc", .module = module }},
+        }),
     });
 
-    const bench_step = builder.step("bench", "Run benchmarks");
-    const run_bench = builder.addRunArtifact(bench_exe);
-    bench_step.dependOn(&run_bench.step);
+    const run = b.addRunArtifact(exe);
 
-    const soak_module = builder.createModule(.{
-        .root_source_file = builder.path("benchmarks/soak.zig"),
-        .target = target,
-        .optimize = .ReleaseSafe,
-    });
+    run.setCwd(b.path("."));
 
-    soak_module.addImport("arc", arc_module);
+    steps.bench.dependOn(&run.step);
+    steps.check.dependOn(&exe.step);
+}
 
-    const soak_exe = builder.addExecutable(.{
+fn add_soak(
+    b: *std.Build,
+    steps: *const Steps,
+    module: *std.Build.Module,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const exe = b.addExecutable(.{
         .name = "soak",
-        .root_module = soak_module,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("benchmarks/soak.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "arc", .module = module }},
+        }),
     });
 
-    const soak_step = builder.step("soak", "Run soak test");
-    const run_soak = builder.addRunArtifact(soak_exe);
+    const run = b.addRunArtifact(exe);
 
-    soak_step.dependOn(&run_soak.step);
+    run.setCwd(b.path("."));
 
-    const fuzz_module = builder.createModule(.{
-        .root_source_file = builder.path("benchmarks/fuzz.zig"),
-        .target = target,
-        .optimize = .ReleaseSafe,
-    });
+    steps.soak.dependOn(&run.step);
+    steps.check.dependOn(&exe.step);
+}
 
-    fuzz_module.addImport("arc", arc_module);
-
-    const fuzz_exe = builder.addExecutable(.{
+fn add_fuzz(
+    b: *std.Build,
+    steps: *const Steps,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const exe = b.addExecutable(.{
         .name = "fuzz",
-        .root_module = fuzz_module,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/fuzz_tests.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
 
-    const fuzz_step = builder.step("fuzz", "Run the brute-force encoder fuzzer");
-    const run_fuzz = builder.addRunArtifact(fuzz_exe);
-    fuzz_step.dependOn(&run_fuzz.step);
+    const run = b.addRunArtifact(exe);
+
+    run.setCwd(b.path("."));
+
+    if (b.args) |args| run.addArgs(args);
+
+    const smoke = b.addRunArtifact(exe);
+
+    smoke.setCwd(b.path("."));
+    smoke.addArg("smoke");
+
+    steps.fuzz.dependOn(&run.step);
+    steps.fuzz_build.dependOn(&exe.step);
+    steps.fuzz_smoke.dependOn(&smoke.step);
+    steps.check.dependOn(&exe.step);
 }

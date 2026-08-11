@@ -1,59 +1,9 @@
 const std = @import("std");
 const level_mod = @import("../core/level.zig");
 
+const assert = std.debug.assert;
+
 const Level = level_mod.Level;
-
-pub const key_name_max: u32 = 32;
-pub const omit_key = "";
-
-pub const EncoderConfigError = error{
-    MessageKeyTooLong,
-    LevelKeyTooLong,
-    TimeKeyTooLong,
-    NameKeyTooLong,
-    CallerKeyTooLong,
-    FunctionKeyTooLong,
-    StacktraceKeyTooLong,
-};
-
-pub const TimeEncoding = enum(u8) {
-    epoch_s,
-    epoch_ms,
-    epoch_ns,
-    iso8601,
-    rfc3339,
-    rfc3339_nano,
-};
-
-pub const LevelEncoding = enum(u8) {
-    lowercase,
-    uppercase,
-    capital,
-    capital_color,
-    lowercase_color,
-};
-
-pub const DurationEncoding = enum(u8) {
-    seconds,
-    millis,
-    nanos,
-    string,
-};
-
-pub const CallerEncoding = enum(u8) {
-    full_path,
-    short_path,
-};
-
-pub const LineEnding = enum(u8) {
-    newline,
-    none,
-};
-
-pub const ConsoleFieldFormat = enum(u8) {
-    json,
-    key_value,
-};
 
 pub const EncoderConfig = struct {
     key_message: []const u8,
@@ -170,17 +120,17 @@ pub const EncoderConfig = struct {
     }
 
     pub fn validate(self: *const EncoderConfig) EncoderConfigError!void {
-        if (self.key_message.len > key_name_max) return error.MessageKeyTooLong;
-        if (self.key_level.len > key_name_max) return error.LevelKeyTooLong;
-        if (self.key_time.len > key_name_max) return error.TimeKeyTooLong;
-        if (self.key_name.len > key_name_max) return error.NameKeyTooLong;
-        if (self.key_caller.len > key_name_max) return error.CallerKeyTooLong;
-        if (self.key_function.len > key_name_max) return error.FunctionKeyTooLong;
-        if (self.key_stacktrace.len > key_name_max) return error.StacktraceKeyTooLong;
+        if (self.key_message.len > key_name_bytes_max) return error.MessageKeyTooLong;
+        if (self.key_level.len > key_name_bytes_max) return error.LevelKeyTooLong;
+        if (self.key_time.len > key_name_bytes_max) return error.TimeKeyTooLong;
+        if (self.key_name.len > key_name_bytes_max) return error.NameKeyTooLong;
+        if (self.key_caller.len > key_name_bytes_max) return error.CallerKeyTooLong;
+        if (self.key_function.len > key_name_bytes_max) return error.FunctionKeyTooLong;
+        if (self.key_stacktrace.len > key_name_bytes_max) return error.StacktraceKeyTooLong;
     }
 
     pub fn with_message_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_message = key;
@@ -189,7 +139,7 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_level_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_level = key;
@@ -198,7 +148,7 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_time_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_time = key;
@@ -207,7 +157,7 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_name_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_name = key;
@@ -216,7 +166,7 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_caller_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_caller = key;
@@ -225,7 +175,7 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_function_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_function = key;
@@ -234,7 +184,7 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_stacktrace_key(self: *const EncoderConfig, key: []const u8) EncoderConfig {
-        std.debug.assert(key.len <= key_name_max);
+        assert(key.len <= key_name_bytes_max);
 
         var config = self.*;
         config.key_stacktrace = key;
@@ -277,8 +227,8 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_console_separator(self: *const EncoderConfig, separator: u8) EncoderConfig {
-        std.debug.assert(separator != 0);
-        std.debug.assert(separator >= 0x09);
+        assert(separator != 0);
+        assert(separator >= 0x09);
 
         var config = self.*;
         config.console_separator = separator;
@@ -287,8 +237,8 @@ pub const EncoderConfig = struct {
     }
 
     pub fn with_time_offset(self: *const EncoderConfig, offset_minutes: i32) EncoderConfig {
-        std.debug.assert(offset_minutes > -1440);
-        std.debug.assert(offset_minutes < 1440);
+        assert(offset_minutes > -1440);
+        assert(offset_minutes < 1440);
 
         var config = self.*;
         config.time_offset_minutes = offset_minutes;
@@ -296,10 +246,147 @@ pub const EncoderConfig = struct {
         return config;
     }
 
-    pub fn with_console_fields(self: *const EncoderConfig, format: ConsoleFieldFormat) EncoderConfig {
+    pub fn with_console_fields(
+        self: *const EncoderConfig,
+        format: ConsoleFieldFormat,
+    ) EncoderConfig {
         var config = self.*;
         config.console_fields = format;
 
         return config;
     }
 };
+
+pub const EncoderConfigError = error{
+    MessageKeyTooLong,
+    LevelKeyTooLong,
+    TimeKeyTooLong,
+    NameKeyTooLong,
+    CallerKeyTooLong,
+    FunctionKeyTooLong,
+    StacktraceKeyTooLong,
+};
+
+pub const TimeEncoding = enum(u8) {
+    epoch_s,
+    epoch_ms,
+    epoch_ns,
+    iso8601,
+    rfc3339,
+    rfc3339_nano,
+};
+
+pub const LevelEncoding = enum(u8) {
+    lowercase,
+    uppercase,
+    capital,
+    capital_color,
+    lowercase_color,
+};
+
+pub const DurationEncoding = enum(u8) {
+    seconds,
+    milliseconds,
+    nanoseconds,
+    string,
+};
+
+pub const CallerEncoding = enum(u8) {
+    full_path,
+    short_path,
+};
+
+pub const LineEnding = enum(u8) {
+    newline,
+    none,
+};
+
+pub const ConsoleFieldFormat = enum(u8) {
+    json,
+    key_value,
+};
+
+pub const key_name_bytes_max: u32 = 32;
+pub const omit_key = "";
+
+comptime {
+    assert(key_name_bytes_max > 0);
+}
+
+const testing = std.testing;
+
+test "a production encoder config carries the production defaults" {
+    const cfg = EncoderConfig.production();
+
+    try testing.expectEqualStrings("msg", cfg.key_message);
+    try testing.expectEqualStrings("level", cfg.key_level);
+    try testing.expectEqualStrings("ts", cfg.key_time);
+    try testing.expectEqualStrings("logger", cfg.key_name);
+    try testing.expectEqualStrings("caller", cfg.key_caller);
+    try testing.expect(!cfg.should_omit_message());
+    try testing.expect(!cfg.should_omit_level());
+    try testing.expect(!cfg.should_omit_time());
+
+    assert(cfg.key_message.len > 0);
+    assert(cfg.key_level.len > 0);
+}
+
+test "a development encoder config carries the development defaults" {
+    const cfg = EncoderConfig.development();
+
+    try testing.expectEqualStrings("M", cfg.key_message);
+    try testing.expectEqualStrings("L", cfg.key_level);
+    try testing.expectEqualStrings("T", cfg.key_time);
+    try testing.expect(cfg.level_uses_color());
+
+    assert(cfg.key_message.len > 0);
+    assert(cfg.level_uses_color());
+}
+
+test "an empty key name omits its part of the envelope" {
+    const cfg = EncoderConfig.production()
+        .with_message_key("");
+
+    try testing.expect(cfg.should_omit_message());
+    try testing.expect(!cfg.should_omit_level());
+
+    assert(cfg.should_omit_message());
+    assert(!cfg.should_omit_level());
+}
+
+test "a well-formed encoder config validates" {
+    const cfg = EncoderConfig.production();
+
+    try cfg.validate();
+
+    assert(cfg.key_message.len <= key_name_bytes_max);
+    assert(cfg.key_level.len <= key_name_bytes_max);
+}
+
+test "a level renders under the configured level encoding" {
+    const prod = EncoderConfig.production();
+    const dev = EncoderConfig.development();
+
+    try testing.expectEqualStrings("info", prod.level_string(.info));
+    try testing.expectEqualStrings("INFO", dev.level_string(.info));
+    try testing.expectEqualStrings("error", prod.level_string(.err));
+    try testing.expectEqualStrings("ERROR", dev.level_string(.err));
+
+    assert(prod.level_string(.info).len > 0);
+    assert(dev.level_string(.info).len > 0);
+}
+
+test "a color encoding reports that it wants color" {
+    const prod = EncoderConfig.production();
+    const dev = EncoderConfig.development();
+
+    try testing.expect(!prod.level_uses_color());
+    try testing.expect(dev.level_uses_color());
+
+    try testing.expectEqualStrings("", prod.level_color_prefix(.info));
+    try testing.expect(dev.level_color_prefix(.info).len > 0);
+    try testing.expect(dev.level_color_suffix().len > 0);
+
+    assert(!prod.level_uses_color());
+    assert(dev.level_uses_color());
+}

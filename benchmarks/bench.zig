@@ -1,15 +1,22 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const assert = std.debug.assert;
+
+const Buffer = arc.Buffer;
 const Clock = arc.Clock;
 const Config = arc.Config;
 const EncoderConfig = arc.EncoderConfig;
-const Level = arc.Level;
 const Logger = arc.Logger;
 
-const warmup_iterations: u32 = 1_000;
-const bench_iterations: u32 = 100_000;
+const iterations_warmup: u32 = 1_000;
+const iterations_bench: u32 = 100_000;
+
+comptime {
+    assert(iterations_warmup > 0);
+    assert(iterations_bench > iterations_warmup);
+}
+
 const runs: u32 = 9;
 
 const long_string = "x" ** 256;
@@ -26,33 +33,33 @@ fn base_config() Config {
         .with_stacktrace_level(.fatal);
 }
 
-fn make_logger(out: *Buffer, config: Config) Logger {
-    var logger = Logger.init_with_config(bench_io, config.with_writer(.{ .buffer = out }));
+fn make_logger(output: *Buffer, config: Config) Logger {
+    var logger = Logger.init_with_config(bench_io, config.with_writer(.{ .buffer = output }));
     logger.set_clock(Clock.init_fixed(1_700_000_000));
 
     return logger;
 }
 
-fn setup_standard(out: *Buffer) Logger {
-    return make_logger(out, base_config());
+fn setup_standard(output: *Buffer) Logger {
+    return make_logger(output, base_config());
 }
 
-fn setup_warn(out: *Buffer) Logger {
-    return make_logger(out, base_config().with_level(.warn));
+fn setup_warn(output: *Buffer) Logger {
+    return make_logger(output, base_config().with_level(.warn));
 }
 
-fn setup_iso(out: *Buffer) Logger {
+fn setup_iso(output: *Buffer) Logger {
     return make_logger(
-        out,
+        output,
         base_config().with_encoder_config(
             EncoderConfig.production().with_time_encoding(.iso8601),
         ),
     );
 }
 
-fn setup_duration_string(out: *Buffer) Logger {
+fn setup_duration_string(output: *Buffer) Logger {
     return make_logger(
-        out,
+        output,
         base_config().with_encoder_config(
             EncoderConfig.production().with_duration_encoding(.string),
         ),
@@ -165,112 +172,153 @@ fn fold(accumulator: *u64, data: []const u8) void {
     accumulator.* = sum;
 }
 
-fn run_fields(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32, fields: []const arc.Field) void {
+fn run_fields(
+    logger: *Logger,
+    output: *Buffer,
+    accumulator: *u64,
+    iterations: u32,
+    fields: []const arc.Field,
+) void {
+    assert(iterations > 0);
+    assert(fields.len <= arc.fields_max);
+
     var i: u32 = 0;
 
     while (i < iterations) : (i += 1) {
-        out.reset();
+        output.reset();
         logger.info("bench", fields, @src());
-        fold(accumulator, out.contents());
+        fold(accumulator, output.contents());
     }
 
-    std.debug.assert(i == iterations);
+    assert(i == iterations);
 }
 
-fn run_adding_fields(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_adding_fields(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_fields();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_accumulated_context(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_accumulated_context(
+    logger: *Logger,
+    output: *Buffer,
+    accumulator: *u64,
+    iterations: u32,
+) void {
+    assert(iterations > 0);
+
     const fields = ten_fields();
     var child = logger.with(&fields);
 
     var i: u32 = 0;
 
     while (i < iterations) : (i += 1) {
-        out.reset();
+        output.reset();
         child.info("bench", &.{}, @src());
-        fold(accumulator, out.contents());
+        fold(accumulator, output.contents());
     }
 
-    std.debug.assert(i == iterations);
+    assert(i == iterations);
 }
 
-fn run_without_fields(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
-    run_fields(logger, out, accumulator, iterations, &.{});
+fn run_without_fields(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
+    run_fields(logger, output, accumulator, iterations, &.{});
 }
 
-fn run_int_fields(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_int_fields(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_ints();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_string_clean(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_string_clean(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_strings_clean();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_string_escaped(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_string_escaped(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_strings_escaped();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_string_long(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
-    run_fields(logger, out, accumulator, iterations, &.{arc.string("payload", long_string)});
+fn run_string_long(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
+    run_fields(logger, output, accumulator, iterations, &.{arc.string("payload", long_string)});
 }
 
-fn run_float_fields(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_float_fields(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_floats();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_duration_string(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_duration_string(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_durations();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_time_iso(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_time_iso(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_times();
-    run_fields(logger, out, accumulator, iterations, &fields);
+    run_fields(logger, output, accumulator, iterations, &fields);
 }
 
-fn run_nested_object(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
-    const user = User{ .name = "alice", .age = 30, .address = .{ .city = "denver", .zip_code = 80014 } };
+fn run_nested_object(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
+    const address = Address{ .city = "denver", .zip_code = 80014 };
+    const user = User{ .name = "alice", .age = 30, .address = address };
 
     var i: u32 = 0;
 
     while (i < iterations) : (i += 1) {
-        out.reset();
+        output.reset();
         logger.info("bench", &.{arc.object("user", &user)}, @src());
-        fold(accumulator, out.contents());
+        fold(accumulator, output.contents());
     }
 
-    std.debug.assert(i == iterations);
+    assert(i == iterations);
 }
 
-fn run_checked_entry(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
+fn run_checked_entry(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
     const fields = ten_fields();
 
     var i: u32 = 0;
 
     while (i < iterations) : (i += 1) {
-        out.reset();
+        output.reset();
 
-        var maybe = logger.check_entry(.info, "bench", @src());
+        var checked_entry: arc.CheckedEntry = undefined;
 
-        if (maybe) |*checked_entry| {
+        if (logger.check_entry(&checked_entry, .info, "bench", @src())) {
             checked_entry.write(&fields);
         }
 
-        fold(accumulator, out.contents());
+        fold(accumulator, output.contents());
     }
 
-    std.debug.assert(i == iterations);
+    assert(i == iterations);
 }
 
-fn run_disabled_level(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
-    _ = out;
+fn run_disabled_level(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
+    _ = output;
 
     var i: u32 = 0;
 
@@ -281,11 +329,13 @@ fn run_disabled_level(logger: *Logger, out: *Buffer, accumulator: *u64, iteratio
         accumulator.* +%= @intFromBool(logger.check(.debug));
     }
 
-    std.debug.assert(i == iterations);
+    assert(i == iterations);
 }
 
-fn run_check_disabled(logger: *Logger, out: *Buffer, accumulator: *u64, iterations: u32) void {
-    _ = out;
+fn run_check_disabled(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
+    assert(iterations > 0);
+
+    _ = output;
 
     var i: u32 = 0;
 
@@ -298,7 +348,7 @@ fn run_check_disabled(logger: *Logger, out: *Buffer, accumulator: *u64, iteratio
         }
     }
 
-    std.debug.assert(i == iterations);
+    assert(i == iterations);
 }
 
 const RunFn = *const fn (*Logger, *Buffer, *u64, u32) void;
@@ -321,7 +371,11 @@ const benchmarks = [_]Benchmark{
     .{ .name = "field_string_escaped", .setup = setup_standard, .func = run_string_escaped },
     .{ .name = "field_string_long", .setup = setup_standard, .func = run_string_long },
     .{ .name = "field_float", .setup = setup_standard, .func = run_float_fields },
-    .{ .name = "field_duration_string", .setup = setup_duration_string, .func = run_duration_string },
+    .{
+        .name = "field_duration_string",
+        .setup = setup_duration_string,
+        .func = run_duration_string,
+    },
     .{ .name = "field_time_iso", .setup = setup_iso, .func = run_time_iso },
     .{ .name = "disabled_level", .setup = setup_warn, .func = run_disabled_level },
     .{ .name = "check_disabled", .setup = setup_warn, .func = run_check_disabled },
@@ -334,7 +388,7 @@ fn now_ns(io: std.Io) i128 {
 fn elapsed_ns(io: std.Io, start: i128) u64 {
     const delta = now_ns(io) - start;
 
-    std.debug.assert(delta >= 0);
+    assert(delta >= 0);
 
     return @intCast(delta);
 }
@@ -346,7 +400,7 @@ const Stats = struct {
 };
 
 fn compute_stats(samples: []u64) Stats {
-    std.debug.assert(samples.len == runs);
+    assert(samples.len == runs);
 
     std.mem.sort(u64, samples, {}, std.sort.asc(u64));
 
@@ -371,7 +425,7 @@ fn compute_stats(samples: []u64) Stats {
     variance /= @as(f64, @floatFromInt(runs));
 
     const stddev = @sqrt(variance);
-    const iterations: f64 = @floatFromInt(bench_iterations);
+    const iterations: f64 = @floatFromInt(iterations_bench);
 
     return .{
         .median_ns_per_op = median_total / iterations,
@@ -381,24 +435,24 @@ fn compute_stats(samples: []u64) Stats {
 }
 
 fn measure(io: std.Io, bench: Benchmark, accumulator: *u64, samples: []u64) void {
-    std.debug.assert(samples.len == runs);
+    assert(samples.len == runs);
 
     var run: u32 = 0;
 
     while (run < runs) : (run += 1) {
-        var out = Buffer.init();
-        var logger = bench.setup(&out);
+        var output = Buffer.init();
+        var logger = bench.setup(&output);
 
-        bench.func(&logger, &out, accumulator, warmup_iterations);
+        bench.func(&logger, &output, accumulator, iterations_warmup);
 
         const start = now_ns(io);
-        bench.func(&logger, &out, accumulator, bench_iterations);
+        bench.func(&logger, &output, accumulator, iterations_bench);
         samples[run] = elapsed_ns(io, start);
 
-        std.debug.assert(samples[run] > 0);
+        assert(samples[run] > 0);
     }
 
-    std.debug.assert(run == runs);
+    assert(run == runs);
 }
 
 pub fn main() void {
@@ -417,7 +471,13 @@ pub fn main() void {
 
     std.debug.print(
         "{s:<24} {s:>12} {s:>12} {s:>14} {s:>9}\n",
-        .{ "------------------------", "------------", "------------", "--------------", "---------" },
+        .{
+            "------------------------",
+            "------------",
+            "------------",
+            "--------------",
+            "---------",
+        },
     );
 
     for (benchmarks) |bench| {
@@ -432,7 +492,13 @@ pub fn main() void {
 
         std.debug.print(
             "{s:<24} {d:>12.2} {d:>12.2} {d:>14.0} {d:>9.1}\n",
-            .{ bench.name, stats.median_ns_per_op, stats.min_ns_per_op, ops_per_sec, stats.stddev_percent },
+            .{
+                bench.name,
+                stats.median_ns_per_op,
+                stats.min_ns_per_op,
+                ops_per_sec,
+                stats.stddev_percent,
+            },
         );
     }
 

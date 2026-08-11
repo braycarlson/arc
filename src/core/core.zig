@@ -8,20 +8,23 @@ const json_encoder_mod = @import("../encoding/json.zig");
 const level_mod = @import("level.zig");
 const observer_mod = @import("../observer.zig");
 const writer_mod = @import("../io/writer.zig");
+const clock_mod = @import("clock.zig");
+const config_mod = @import("../config.zig");
+const logger_mod = @import("../logger.zig");
+
+const assert = std.debug.assert;
 
 const Buffer = buffer_mod.Buffer;
 const Encoder = encoder_mod.Encoder;
 const Encoding = encoder_mod.Encoding;
 const EncoderConfig = encoder_config_mod.EncoderConfig;
 const Entry = entry_mod.Entry;
-const Field = field_mod.Field;
+const EntryFields = field_mod.EntryFields;
 const Level = level_mod.Level;
 const AtomicLevel = level_mod.AtomicLevel;
 const Observer = observer_mod.Observer;
 const Writer = writer_mod.Writer;
 const WriteError = writer_mod.WriteError;
-
-pub const cores_tee_max: u32 = 4;
 
 pub const Core = union(enum) {
     io: IoCore,
@@ -44,23 +47,16 @@ pub const Core = union(enum) {
         self: *Core,
         io: std.Io,
         entry: *const Entry,
-        context_fields: []const Field,
-        call_fields: []const Field,
+        fields: EntryFields,
     ) WriteError!void {
-        std.debug.assert(context_fields.len <= field_mod.fields_max);
-        std.debug.assert(call_fields.len <= field_mod.fields_max);
+        assert(fields.is_valid());
 
         switch (self.*) {
-            .io => |*io_core| try io_core.write(io, entry, context_fields, call_fields),
+            .io => |*io_core| try io_core.write(io, entry, fields),
             .nop => {},
-            .tee => |*tee_core| try tee_core.write(io, entry, context_fields, call_fields),
-            .observer => |observer| observer.record(entry, context_fields, call_fields),
-            .increase => |increase_core| try increase_core.write(
-                io,
-                entry,
-                context_fields,
-                call_fields,
-            ),
+            .tee => |*tee_core| try tee_core.write(io, entry, fields),
+            .observer => |observer| observer.record(entry, fields),
+            .increase => |increase_core| try increase_core.write(io, entry, fields),
         }
     }
 
@@ -120,13 +116,14 @@ pub const Core = union(enum) {
             .io => |*io_core| io_core.level.level(),
             .nop => Level.fatal,
             .tee => |*tee_core| blk: {
-                std.debug.assert(tee_core.cores_count > 0);
+                assert(tee_core.cores_count > 0);
 
                 var minimum = Level.fatal;
                 const active = tee_core.cores[0..tee_core.cores_count];
 
                 for (active) |*io_core| {
                     const io_level = io_core.level.level();
+
                     if (@intFromEnum(io_level) < @intFromEnum(minimum)) {
                         minimum = io_level;
                     }
@@ -169,22 +166,14 @@ pub const IoCore = struct {
         self: *IoCore,
         io: std.Io,
         entry: *const Entry,
-        context_fields: []const Field,
-        call_fields: []const Field,
+        fields: EntryFields,
     ) WriteError!void {
-        std.debug.assert(context_fields.len <= field_mod.fields_max);
-        std.debug.assert(call_fields.len <= field_mod.fields_max);
+        assert(fields.is_valid());
 
         var buffer = Buffer.init();
         var state = json_encoder_mod.EncodeState.init();
 
-        self.encoder.encode_entry(
-            &state,
-            &buffer,
-            entry,
-            context_fields,
-            call_fields,
-        );
+        self.encoder.encode_entry(&state, &buffer, entry, fields);
 
         if (buffer.was_truncated()) {
             if (self.drop_counter) |counter| {
@@ -194,7 +183,7 @@ pub const IoCore = struct {
             self.encoder.encode_truncation_notice(&buffer, entry);
         }
 
-        std.debug.assert(buffer.len() > 0);
+        assert(buffer.length() > 0);
 
         if (self.thread_safe) {
             self.mutex.lockUncancelable(io);
@@ -227,14 +216,14 @@ pub const IoCore = struct {
 };
 
 pub const TeeCore = struct {
-    cores: [cores_tee_max]IoCore,
+    cores: [tee_cores_max]IoCore,
     cores_count: u32,
 
     pub fn init(targets: []const IoCore) TeeCore {
-        std.debug.assert(targets.len > 0);
+        assert(targets.len > 0);
 
-        if (targets.len > cores_tee_max) {
-            @panic("tee core count exceeds cores_tee_max");
+        if (targets.len > tee_cores_max) {
+            @panic("tee core count exceeds tee_cores_max");
         }
 
         var tee_core: TeeCore = undefined;
@@ -248,7 +237,7 @@ pub const TeeCore = struct {
     }
 
     pub fn enabled(self: *const TeeCore, at_level: Level) bool {
-        std.debug.assert(self.cores_count > 0);
+        assert(self.cores_count > 0);
 
         const active = self.cores[0..self.cores_count];
 
@@ -265,23 +254,22 @@ pub const TeeCore = struct {
         self: *TeeCore,
         io: std.Io,
         entry: *const Entry,
-        context_fields: []const Field,
-        call_fields: []const Field,
+        fields: EntryFields,
     ) WriteError!void {
-        std.debug.assert(self.cores_count > 0);
-        std.debug.assert(context_fields.len <= field_mod.fields_max);
+        assert(self.cores_count > 0);
+        assert(fields.is_valid());
 
         const active = self.cores[0..self.cores_count];
 
         for (active) |*io_core| {
             if (io_core.level.enabled(entry.level)) {
-                try io_core.write(io, entry, context_fields, call_fields);
+                try io_core.write(io, entry, fields);
             }
         }
     }
 
     pub fn sync(self: *TeeCore, io: std.Io) WriteError!void {
-        std.debug.assert(self.cores_count > 0);
+        assert(self.cores_count > 0);
 
         const active = self.cores[0..self.cores_count];
 
@@ -304,7 +292,7 @@ pub const IncreaseLevelCore = struct {
             return error.LevelNotIncreased;
         }
 
-        std.debug.assert(@intFromEnum(at_level) >= @intFromEnum(current));
+        assert(@intFromEnum(at_level) >= @intFromEnum(current));
 
         return .{
             .inner = inner,
@@ -324,13 +312,12 @@ pub const IncreaseLevelCore = struct {
         self: *IncreaseLevelCore,
         io: std.Io,
         entry: *const Entry,
-        context_fields: []const Field,
-        call_fields: []const Field,
+        fields: EntryFields,
     ) WriteError!void {
-        std.debug.assert(self.enabled(entry.level));
-        std.debug.assert(context_fields.len <= field_mod.fields_max);
+        assert(self.enabled(entry.level));
+        assert(fields.is_valid());
 
-        try self.inner.write(io, entry, context_fields, call_fields);
+        try self.inner.write(io, entry, fields);
     }
 
     pub fn sync(self: *IncreaseLevelCore, io: std.Io) WriteError!void {
@@ -341,3 +328,252 @@ pub const IncreaseLevelCore = struct {
         return self.minimum_level;
     }
 };
+
+pub const tee_cores_max: u32 = 4;
+
+comptime {
+    assert(tee_cores_max > 0);
+}
+
+const testing = std.testing;
+
+const temporary = @import("../testing/temporary.zig");
+
+fn make_io_core(output: *Buffer, at_level: Level) IoCore {
+    return IoCore.init(
+        at_level,
+        Encoding.json,
+        EncoderConfig.production(),
+        .{ .buffer = output },
+        false,
+    );
+}
+
+test "a nop core is disabled at every level" {
+    var core = Core{ .nop = {} };
+
+    try testing.expect(!core.enabled(.debug));
+    try testing.expect(!core.enabled(.info));
+    try testing.expectEqual(@as(?Level, null), core.current_level());
+    try testing.expectEqual(@as(?*level_mod.AtomicLevel, null), core.atomic_level());
+    try testing.expectEqual(Level.fatal, core.minimum_level());
+
+    const ignored = Entry.init(testing.io, .info, "ignored", "test");
+
+    try core.write(testing.io, &ignored, .{ .context = &.{}, .message = &.{} });
+    try core.sync(testing.io);
+}
+
+test "an io core enables only levels at or above its threshold" {
+    var output = Buffer.init();
+    var core = Core{ .io = make_io_core(&output, .warn) };
+
+    try testing.expect(!core.enabled(.debug));
+    try testing.expect(!core.enabled(.info));
+    try testing.expect(core.enabled(.warn));
+    try testing.expect(core.enabled(.err));
+
+    try testing.expectEqual(Level.warn, core.current_level().?);
+    try testing.expectEqual(Level.warn, core.minimum_level());
+
+    assert(core.current_level().? == .warn);
+    assert(core.minimum_level() == .warn);
+}
+
+test "an io core writes the encoded entry to its buffer" {
+    var output = Buffer.init();
+    var core = Core{ .io = make_io_core(&output, .debug) };
+
+    var entry = Entry.init(testing.io, .info, "hello world", "app");
+
+    try core.write(testing.io, &entry, .{ .context = &.{}, .message = &.{} });
+
+    try testing.expect(!output.is_empty());
+    try testing.expect(output.contains("hello world"));
+    try testing.expect(output.contains("info"));
+
+    assert(output.contains("hello world"));
+    assert(output.contains("info"));
+}
+
+test "an io core writes the context fields alongside the entry" {
+    var output = Buffer.init();
+    var core = Core{ .io = make_io_core(&output, .debug) };
+
+    var entry = Entry.init(testing.io, .info, "boot", "svc");
+
+    try core.write(testing.io, &entry, .{
+        .context = &.{
+            field_mod.string("service", "auth"),
+            field_mod.int("version", 2),
+        },
+        .message = &.{},
+    });
+
+    try testing.expect(output.contains("boot"));
+    try testing.expect(output.contains("service"));
+    try testing.expect(output.contains("auth"));
+    try testing.expect(output.contains("version"));
+
+    assert(output.contains("auth"));
+}
+
+test "a tee core writes to every child it holds" {
+    var output_a = Buffer.init();
+    var output_b = Buffer.init();
+
+    const cores = [_]IoCore{
+        make_io_core(&output_a, .debug),
+        make_io_core(&output_b, .debug),
+    };
+
+    var core = Core{ .tee = TeeCore.init(&cores) };
+
+    var entry = Entry.init(testing.io, .info, "fanout", "tee");
+
+    try core.write(testing.io, &entry, .{ .context = &.{}, .message = &.{} });
+
+    try testing.expect(output_a.contains("fanout"));
+    try testing.expect(output_b.contains("fanout"));
+
+    assert(output_a.contains("fanout"));
+    assert(output_b.contains("fanout"));
+}
+
+test "a tee core lets each child apply its own level" {
+    var output_info = Buffer.init();
+    var output_err = Buffer.init();
+
+    const cores = [_]IoCore{
+        make_io_core(&output_info, .info),
+        make_io_core(&output_err, .err),
+    };
+
+    var core = Core{ .tee = TeeCore.init(&cores) };
+
+    var info_entry = Entry.init(testing.io, .info, "info only", "tee");
+
+    try core.write(testing.io, &info_entry, .{ .context = &.{}, .message = &.{} });
+
+    try testing.expect(output_info.contains("info only"));
+    try testing.expect(!output_err.contains("info only"));
+
+    var err_entry = Entry.init(testing.io, .err, "error both", "tee");
+
+    try core.write(testing.io, &err_entry, .{ .context = &.{}, .message = &.{} });
+
+    try testing.expect(output_info.contains("error both"));
+    try testing.expect(output_err.contains("error both"));
+
+    try testing.expectEqual(Level.info, core.minimum_level());
+}
+
+test "an increase level core refuses a minimum below the core it wraps" {
+    var output = Buffer.init();
+    var inner = Core{ .io = make_io_core(&output, .warn) };
+
+    try testing.expectError(
+        error.LevelNotIncreased,
+        IncreaseLevelCore.init(&inner, .info),
+    );
+}
+
+test "an increase level core raises the level that reaches the wrapped core" {
+    var output = Buffer.init();
+    var inner = Core{ .io = make_io_core(&output, .debug) };
+
+    var raised = try IncreaseLevelCore.init(&inner, .err);
+
+    try testing.expect(!raised.enabled(.debug));
+    try testing.expect(!raised.enabled(.info));
+    try testing.expect(!raised.enabled(.warn));
+    try testing.expect(raised.enabled(.err));
+    try testing.expect(raised.enabled(.fatal));
+    try testing.expectEqual(Level.err, raised.level());
+
+    var err_entry = Entry.init(testing.io, .err, "visible", "raised");
+
+    try raised.write(testing.io, &err_entry, .{ .context = &.{}, .message = &.{} });
+
+    try testing.expect(output.contains("visible"));
+    try testing.expect(!output.contains("hidden"));
+
+    assert(output.contains("visible"));
+}
+
+test "an increase level core forwards a sync to the core it wraps" {
+    var output = Buffer.init();
+    var inner = Core{ .io = make_io_core(&output, .debug) };
+    var raised = try IncreaseLevelCore.init(&inner, .fatal);
+
+    try raised.sync(testing.io);
+
+    var entry = Entry.init(testing.io, .fatal, "synced", "raised");
+
+    try raised.write(testing.io, &entry, .{ .context = &.{}, .message = &.{} });
+
+    try testing.expect(output.contains("synced"));
+}
+
+test "a core exposes the atomic level of the io core inside it" {
+    var output = Buffer.init();
+    var core = Core{ .io = make_io_core(&output, .info) };
+
+    const atomic = core.atomic_level().?;
+
+    try testing.expectEqual(Level.info, atomic.level());
+
+    atomic.set_level(.err);
+
+    try testing.expectEqual(Level.err, atomic.level());
+    try testing.expectEqual(Level.err, core.current_level().?);
+    try testing.expect(!core.enabled(.info));
+    try testing.expect(core.enabled(.err));
+
+    assert(core.current_level().? == .err);
+}
+
+const Clock = clock_mod.Clock;
+const Config = config_mod.Config;
+const Logger = logger_mod.Logger;
+
+test "a failing write reports to the error output and logging continues" {
+    const io = testing.io;
+    const path = ".zz_error_path.tmp";
+
+    // Create a file, capture its descriptor, then close it so every write through
+    // that descriptor fails. No descriptor is opened between the close and the
+    // failing writes, so it cannot be reused underneath us.
+    const file = try std.Io.Dir.cwd().createFile(io, path, .{});
+    const stale_file_descriptor = file.handle;
+    file.close(io);
+    defer temporary.remove_file(io, path);
+
+    var errors = Buffer.init();
+
+    var logger = Logger.init_with_config(
+        io,
+        Config.production()
+            .with_level(.debug)
+            .without_sampling()
+            .without_caller()
+            .with_writer(.{ .file_descriptor = stale_file_descriptor })
+            .with_error_output(.{ .buffer = &errors })
+            .with_thread_safety(false)
+            .with_stacktrace_level(.fatal),
+    );
+
+    logger.set_clock(Clock.init_fixed(1_700_000_000));
+
+    logger.info("first", &.{}, @src());
+
+    try testing.expect(errors.contains("arc internal error"));
+
+    const after_first = errors.length();
+
+    logger.info("second", &.{}, @src());
+
+    try testing.expect(errors.length() > after_first);
+
+    assert(errors.length() > after_first);
+}

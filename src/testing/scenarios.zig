@@ -1,13 +1,14 @@
 const std = @import("std");
 const arc = @import("arc");
 
-const Buffer = arc.buffer_mod.Buffer;
+const assert = std.debug.assert;
+
+const Buffer = arc.Buffer;
 const Clock = arc.Clock;
 const Config = arc.Config;
-const Level = arc.Level;
 const Logger = arc.Logger;
 const Observer = arc.Observer;
-const Sampler = arc.sampler_mod.Sampler;
+const Sampler = arc.Sampler;
 const SamplingCounter = arc.SamplingCounter;
 
 fn make_logger(output: *Buffer) Logger {
@@ -25,8 +26,9 @@ fn make_logger(output: *Buffer) Logger {
 
     logger.set_clock(Clock.init_fixed(1_700_000_000));
 
-    std.debug.assert(logger.check(.debug));
-    std.debug.assert(logger.context_fields_count == 0);
+    assert(logger.check(.debug));
+    assert(logger.context_fields_count == 0);
+
     return logger;
 }
 
@@ -48,8 +50,9 @@ fn make_sampled_logger(output: *Buffer, sampler: *Sampler) Logger {
     return logger;
 }
 
-test "scenario disabled without fields" {
+test "scenario: a disabled level with no fields writes nothing" {
     var output = Buffer.init();
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -81,11 +84,12 @@ test "scenario disabled without fields" {
     try std.testing.expect(!output.contains("info hidden"));
     try std.testing.expect(!output.contains("warn hidden"));
 
-    std.debug.assert(output.contains("error visible"));
+    assert(output.contains("error visible"));
 }
 
-test "scenario disabled accumulated context" {
+test "scenario: a disabled level with accumulated context writes nothing" {
     var output = Buffer.init();
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -120,12 +124,13 @@ test "scenario disabled accumulated context" {
     try std.testing.expect(output.contains("ca-central"));
     try std.testing.expect(!output.contains("hidden"));
 
-    std.debug.assert(output.contains("visible"));
-    std.debug.assert(output.contains("payments"));
+    assert(output.contains("visible"));
+    assert(output.contains("payments"));
 }
 
-test "scenario disabled adding fields at call site" {
+test "scenario: a disabled level with call-site fields writes nothing" {
     var output = Buffer.init();
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -163,10 +168,10 @@ test "scenario disabled adding fields at call site" {
     try std.testing.expect(output.contains("500"));
     try std.testing.expect(!output.contains("hidden"));
 
-    std.debug.assert(output.contains("/orders"));
+    assert(output.contains("/orders"));
 }
 
-test "scenario enabled without fields across levels" {
+test "scenario: an enabled level with no fields writes an envelope" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -190,11 +195,11 @@ test "scenario enabled without fields across levels" {
     try std.testing.expect(output.contains("dpanic msg"));
     output.reset();
 
-    std.debug.assert(logger.check(.debug));
-    std.debug.assert(logger.check(.fatal));
+    assert(logger.check(.debug));
+    assert(logger.check(.fatal));
 }
 
-test "scenario enabled accumulated context" {
+test "scenario: an enabled level writes its accumulated context" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -214,11 +219,11 @@ test "scenario enabled accumulated context" {
     try std.testing.expect(output.contains("sampled"));
     try std.testing.expect(output.contains("true"));
 
-    std.debug.assert(output.contains("billing"));
-    std.debug.assert(child.context_fields_count > 0);
+    assert(output.contains("billing"));
+    assert(child.context_fields_count > 0);
 }
 
-test "scenario enabled adding fields at call site" {
+test "scenario: an enabled level writes the fields given at the call site" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -242,11 +247,11 @@ test "scenario enabled adding fields at call site" {
     try std.testing.expect(output.contains("cache_hit"));
     try std.testing.expect(output.contains("false"));
 
-    std.debug.assert(output.contains("/v1/users"));
-    std.debug.assert(output.contains("512"));
+    assert(output.contains("/v1/users"));
+    assert(output.contains("512"));
 }
 
-test "scenario enabled combines accumulated and call-site fields" {
+test "scenario: an enabled level combines accumulated and call-site fields" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -270,10 +275,10 @@ test "scenario enabled combines accumulated and call-site fields" {
     try std.testing.expect(output.contains("success"));
     try std.testing.expect(output.contains("true"));
 
-    std.debug.assert(output.contains("alice"));
+    assert(output.contains("alice"));
 }
 
-test "scenario logger naming chains are reflected in output" {
+test "scenario: a chained logger name reaches the output" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -286,11 +291,11 @@ test "scenario logger naming chains are reflected in output" {
     try std.testing.expect(output.contains("http.server.access"));
     try std.testing.expect(output.contains("served"));
 
-    std.debug.assert(child.name().len == "http.server.access".len);
-    std.debug.assert(output.contains("http.server.access"));
+    assert(child.name().len == "http.server.access".len);
+    assert(output.contains("http.server.access"));
 }
 
-test "scenario runtime level changes hide and reveal logs" {
+test "scenario: a runtime level change hides and reveals entries" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -307,11 +312,11 @@ test "scenario runtime level changes hide and reveal logs" {
     try std.testing.expect(output.contains("visible"));
     try std.testing.expect(!output.contains("hidden"));
 
-    std.debug.assert(logger.check(.err));
-    std.debug.assert(!logger.check(.info));
+    assert(logger.check(.err));
+    assert(!logger.check(.info));
 }
 
-test "scenario fixed clock is encoded into log output" {
+test "scenario: a fixed clock reaches the encoded output" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -320,13 +325,15 @@ test "scenario fixed clock is encoded into log output" {
     try std.testing.expect(output.contains("1700000000"));
     try std.testing.expect(output.contains("timestamped"));
 
-    std.debug.assert(output.contains("1700000000"));
+    assert(output.contains("1700000000"));
 }
 
-test "scenario sampler keeps first two then drops later duplicates" {
+test "scenario: a sampler keeps the first duplicates and drops the rest" {
     var output = Buffer.init();
     var counter = SamplingCounter.init();
-    var sampler = Sampler.init(1_000_000_000, 2, 0);
+    var sampler: Sampler = undefined;
+
+    sampler.init(.{ .tick_ns = 1_000_000_000, .first = 2, .thereafter = 0 });
     sampler.with_hook(.{ .counter = &counter });
 
     var logger = make_sampled_logger(&output, &sampler);
@@ -339,14 +346,16 @@ test "scenario sampler keeps first two then drops later duplicates" {
     try std.testing.expectEqual(@as(u64, 2), counter.sampled_count());
     try std.testing.expectEqual(@as(u64, 2), counter.dropped_count());
 
-    std.debug.assert(counter.sampled_count() == 2);
-    std.debug.assert(counter.dropped_count() == 2);
+    assert(counter.sampled_count() == 2);
+    assert(counter.dropped_count() == 2);
 }
 
-test "scenario sampler treats different messages independently" {
+test "scenario: a sampler treats different messages independently" {
     var output = Buffer.init();
     var counter = SamplingCounter.init();
-    var sampler = Sampler.init(1_000_000_000, 2, 0);
+    var sampler: Sampler = undefined;
+
+    sampler.init(.{ .tick_ns = 1_000_000_000, .first = 2, .thereafter = 0 });
     sampler.with_hook(.{ .counter = &counter });
 
     var logger = make_sampled_logger(&output, &sampler);
@@ -362,11 +371,11 @@ test "scenario sampler treats different messages independently" {
     try std.testing.expectEqual(@as(u64, 4), counter.sampled_count());
     try std.testing.expectEqual(@as(u64, 2), counter.dropped_count());
 
-    std.debug.assert(counter.sampled_count() == 4);
-    std.debug.assert(counter.dropped_count() == 2);
+    assert(counter.sampled_count() == 4);
+    assert(counter.dropped_count() == 2);
 }
 
-test "scenario named child inherits parent context" {
+test "scenario: a named child inherits the context of its parent" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -390,12 +399,15 @@ test "scenario named child inherits parent context" {
     try std.testing.expect(output.contains("redis"));
     try std.testing.expect(!output.contains("postgres"));
 
-    std.debug.assert(child_a.name().len == 2);
-    std.debug.assert(child_b.name().len == 5);
+    assert(child_a.name().len == 2);
+    assert(child_b.name().len == 5);
 }
 
-test "scenario observer based level counting" {
-    var observer = Observer.init(.debug);
+test "scenario: an observer counts the entries written at each level" {
+    var observer: Observer = undefined;
+
+    observer.init(.debug);
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -416,17 +428,18 @@ test "scenario observer based level counting" {
     logger.warn("w", &.{}, @src());
     logger.@"error"("e", &.{}, @src());
 
-    try std.testing.expectEqual(@as(u32, 4), observer.len());
+    try std.testing.expectEqual(@as(u32, 4), observer.count());
     try std.testing.expectEqual(@as(u32, 1), observer.count_by_level(.debug));
     try std.testing.expectEqual(@as(u32, 1), observer.count_by_level(.info));
     try std.testing.expectEqual(@as(u32, 1), observer.count_by_level(.warn));
     try std.testing.expectEqual(@as(u32, 1), observer.count_by_level(.err));
 
-    std.debug.assert(observer.len() == 4);
+    assert(observer.count() == 4);
 }
 
-test "scenario observer with accumulated context and call fields" {
+test "scenario: an observer records accumulated context beside call-site fields" {
     var output = Buffer.init();
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -458,12 +471,15 @@ test "scenario observer with accumulated context and call fields" {
     try std.testing.expect(output.contains("canary"));
     try std.testing.expect(output.contains("true"));
 
-    std.debug.assert(child.context_fields_count == 1);
-    std.debug.assert(!output.is_empty());
+    assert(child.context_fields_count == 1);
+    assert(!output.is_empty());
 }
 
-test "scenario observer filter by message returns indices" {
-    var observer = Observer.init(.debug);
+test "scenario: an observer returns the indexes of entries matching a message" {
+    var observer: Observer = undefined;
+
+    observer.init(.debug);
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -492,11 +508,14 @@ test "scenario observer filter by message returns indices" {
     try std.testing.expectEqual(@as(u32, 2), indices[1]);
     try std.testing.expectEqual(@as(u32, 3), indices[2]);
 
-    std.debug.assert(count == 3);
+    assert(count == 3);
 }
 
-test "scenario observer filter by level returns indices" {
-    var observer = Observer.init(.debug);
+test "scenario: an observer returns the indexes of entries at a level" {
+    var observer: Observer = undefined;
+
+    observer.init(.debug);
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -524,10 +543,10 @@ test "scenario observer filter by level returns indices" {
     try std.testing.expectEqual(@as(u32, 1), indices[0]);
     try std.testing.expectEqual(@as(u32, 3), indices[1]);
 
-    std.debug.assert(count == 2);
+    assert(count == 2);
 }
 
-test "scenario multiple resets allow reuse" {
+test "scenario: an observer survives repeated resets and stays usable" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -546,10 +565,10 @@ test "scenario multiple resets allow reuse" {
     logger.warn("third", &.{}, @src());
     try std.testing.expect(output.contains("third"));
 
-    std.debug.assert(!output.is_empty());
+    assert(!output.is_empty());
 }
 
-test "scenario level escalation from debug to fatal" {
+test "scenario: raising the level from debug to fatal narrows the output" {
     var output = Buffer.init();
     var logger = make_logger(&output);
 
@@ -581,12 +600,15 @@ test "scenario level escalation from debug to fatal" {
     logger.@"error"("at-error", &.{}, @src());
     try std.testing.expect(output.contains("at-error"));
 
-    std.debug.assert(logger.check(.err));
-    std.debug.assert(!logger.check(.warn));
+    assert(logger.check(.err));
+    assert(!logger.check(.warn));
 }
 
-test "scenario child inherits clock from parent" {
-    var observer = Observer.init(.debug);
+test "scenario: a child logger inherits the clock of its parent" {
+    var observer: Observer = undefined;
+
+    observer.init(.debug);
+
     var logger = Logger.init_with_config(
         std.testing.io,
         Config.production()
@@ -607,12 +629,13 @@ test "scenario child inherits clock from parent" {
     child.info("timed", &.{}, @src());
 
     const entry = observer.first().?;
+
     try std.testing.expectEqual(@as(i64, 999), entry.timestamp_s);
 
-    std.debug.assert(entry.timestamp_s == 999);
+    assert(entry.timestamp_s == 999);
 }
 
-test "scenario deeply nested naming" {
+test "scenario: deeply nested naming builds one dotted name" {
     var logger = Logger.init_nop();
 
     var child = logger
@@ -625,14 +648,16 @@ test "scenario deeply nested naming" {
     try std.testing.expectEqualStrings("a.b.c.d.e", child.name());
     try std.testing.expectEqual(@as(u32, 5), child.scopes_count);
 
-    std.debug.assert(child.scopes_count == 5);
-    std.debug.assert(child.name_length == "a.b.c.d.e".len);
+    assert(child.scopes_count == 5);
+    assert(child.name_length == "a.b.c.d.e".len);
 }
 
-test "scenario sampler with clock advance resets counts" {
+test "scenario: advancing the clock resets the counts a sampler keeps" {
     var output = Buffer.init();
     var counter = SamplingCounter.init();
-    var sampler = Sampler.init(1_000_000_000, 2, 0);
+    var sampler: Sampler = undefined;
+
+    sampler.init(.{ .tick_ns = 1_000_000_000, .first = 2, .thereafter = 0 });
     sampler.with_hook(.{ .counter = &counter });
 
     var logger = make_sampled_logger(&output, &sampler);
@@ -653,6 +678,6 @@ test "scenario sampler with clock advance resets counts" {
     try std.testing.expectEqual(@as(u64, 4), counter.sampled_count());
     try std.testing.expectEqual(@as(u64, 2), counter.dropped_count());
 
-    std.debug.assert(counter.sampled_count() == 4);
-    std.debug.assert(counter.dropped_count() == 2);
+    assert(counter.sampled_count() == 4);
+    assert(counter.dropped_count() == 2);
 }
