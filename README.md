@@ -1,7 +1,7 @@
 <picture>
     <source media="(prefers-color-scheme: dark)" srcset="assets/arc-wordmark-red.svg">
     <source media="(prefers-color-scheme: light)" srcset="assets/arc-wordmark-red.svg">
-    <img alt="arc" src="assets/arc-wordmark-red.svg" width="300">
+    <img alt="arc" src="assets/arc-wordmark-red.svg" width="200">
 </picture>
 
 &nbsp;
