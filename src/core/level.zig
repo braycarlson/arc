@@ -36,7 +36,7 @@ pub const Level = enum(u8) {
     }
 
     pub fn enabled(self: Level, at_level: Level) bool {
-        return @intFromEnum(at_level) >= @intFromEnum(self);
+        return @backingInt(at_level) >= @backingInt(self);
     }
 };
 
@@ -47,35 +47,35 @@ pub const AtomicLevel = struct {
 
     pub fn init(at_level: Level) AtomicLevel {
         return .{
-            .value = std.atomic.Value(u8).init(@intFromEnum(at_level)),
+            .value = std.atomic.Value(u8).init(@backingInt(at_level)),
         };
     }
 
     pub fn level(self: *const AtomicLevel) Level {
         const raw = self.value.load(.acquire);
 
-        assert(raw <= @intFromEnum(Level.fatal));
+        assert(raw <= @backingInt(Level.fatal));
 
-        return @enumFromInt(raw);
+        return @fromBackingInt(raw);
     }
 
     pub fn set_level(self: *AtomicLevel, at_level: Level) void {
-        self.value.store(@intFromEnum(at_level), .release);
+        self.value.store(@backingInt(at_level), .release);
     }
 
     pub fn enabled(self: *const AtomicLevel, at_level: Level) bool {
         const current = self.level();
 
-        return @intFromEnum(at_level) >= @intFromEnum(current);
+        return @backingInt(at_level) >= @backingInt(current);
     }
 };
 
-pub const levels_count: u32 = @typeInfo(Level).@"enum".fields.len;
+pub const levels_count: u32 = @typeInfo(Level).@"enum".field_names.len;
 
 comptime {
     assert(levels_count > 0);
-    assert(@intFromEnum(Level.debug) == 0);
-    assert(@intFromEnum(Level.fatal) == levels_count - 1);
+    assert(@backingInt(Level.debug) == 0);
+    assert(@backingInt(Level.fatal) == levels_count - 1);
 }
 
 pub fn parse_level(text: []const u8) ParseLevelError!Level {
@@ -125,11 +125,11 @@ test "the levels are ordered by ascending severity" {
     const levels = [_]Level{ .debug, .info, .warn, .err, .dpanic, .panic, .fatal };
 
     for (levels, 0..) |at_level, i| {
-        const raw: u8 = @intFromEnum(at_level);
+        const raw: u8 = @backingInt(at_level);
         assert(raw == i);
     }
 
-    assert(@intFromEnum(Level.debug) < @intFromEnum(Level.fatal));
+    assert(@backingInt(Level.debug) < @backingInt(Level.fatal));
 }
 
 test "a level enables only levels at or above its severity" {
@@ -210,8 +210,8 @@ test "parsing accepts every canonical level name and its aliases" {
     try testing.expectEqual(Level.panic, try parse_level("panic"));
     try testing.expectEqual(Level.fatal, try parse_level("fatal"));
 
-    assert(@intFromEnum(try parse_level("debug")) == 0);
-    assert(@intFromEnum(try parse_level("fatal")) == 6);
+    assert(@backingInt(try parse_level("debug")) == 0);
+    assert(@backingInt(try parse_level("fatal")) == 6);
 }
 
 test "parsing ignores the case of a level name" {
@@ -221,8 +221,8 @@ test "parsing ignores the case of a level name" {
     try testing.expectEqual(Level.err, try parse_level("Error"));
     try testing.expectEqual(Level.panic, try parse_level("PANIC"));
 
-    assert(@intFromEnum(try parse_level("DEBUG")) == 0);
-    assert(@intFromEnum(try parse_level("INFO")) == 1);
+    assert(@backingInt(try parse_level("DEBUG")) == 0);
+    assert(@backingInt(try parse_level("INFO")) == 1);
 }
 
 test "parsing rejects text that names no level" {
@@ -241,7 +241,7 @@ test "an atomic level reads back the level it was built with" {
 
     try testing.expectEqual(Level.info, current);
 
-    assert(@intFromEnum(current) == @intFromEnum(Level.info));
+    assert(@backingInt(current) == @backingInt(Level.info));
     assert(atomic.enabled(.info));
 }
 

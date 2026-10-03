@@ -16,37 +16,34 @@ test:
     zig build test --summary all
 
 test-safe:
-    zig build test -Doptimize=ReleaseSafe --summary all
+    zig build test --release=safe --summary all
 
 test-tsan:
-    zig build test -Dtsan=true --summary all
+    zig build test -Dtsan=true --release=safe --summary all
 
 unit filter="":
-    zig build test:unit --summary all -- {{filter}}
+    zig build test:unit --summary all {{ if filter == "" { "" } else { "-Dtest-filter=" + filter } }}
 
 integration filter="":
-    zig build test:integration --summary all -- {{filter}}
-
-legacy filter="":
-    zig build test:legacy --summary all -- {{filter}}
+    zig build test:integration --summary all {{ if filter == "" { "" } else { "-Dtest-filter=" + filter } }}
 
 tidy:
-    zig build test:unit -- tidy
+    zig build test:unit -Dtest-filter=tidy
 
 fmt:
     zig build test:fmt
 
 format:
-    zig fmt build.zig benchmarks examples src tests
+    zig fmt build.zig benchmarks examples src
 
 run:
     zig build run
 
 bench:
-    zig build bench -Doptimize=ReleaseFast --summary all
+    zig build bench --release=fast --summary all
 
 soak:
-    zig build soak -Doptimize=ReleaseSafe --summary all
+    zig build soak --release=safe --summary all
 
 fuzz-build:
     zig build fuzz:build --summary all
@@ -82,7 +79,7 @@ fuzz-all seed="" events="":
     just fuzz-level {{seed}} {{events}}
 
 release:
-    zig build -Doptimize=ReleaseSafe
+    zig build --release=safe
 
 [unix]
 clean:

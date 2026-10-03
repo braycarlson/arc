@@ -245,7 +245,7 @@ test "an entry accepts every level" {
 
         try testing.expectEqual(at_level, entry.level);
 
-        assert(@intFromEnum(entry.level) <= @intFromEnum(Level.fatal));
+        assert(@backingInt(entry.level) <= @backingInt(Level.fatal));
     }
 
     assert(levels.len == 7);

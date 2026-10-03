@@ -9,7 +9,7 @@ const assert = std.debug.assert;
 const Field = field_mod.Field;
 const Level = level_mod.Level;
 const Logger = @import("logger.zig").Logger;
-const SourceLocation = std.builtin.SourceLocation;
+const SourceLocation = std.lang.SourceLocation;
 
 pub const SugaredLogger = struct {
     logger: *Logger,
@@ -301,7 +301,7 @@ test "formatting a message that overflows the buffer keeps what fits" {
 test "each formatting method logs at its own level" {
     const Case = struct {
         level_text: []const u8,
-        log: *const fn (*SugaredLogger, std.builtin.SourceLocation) void,
+        log: *const fn (*SugaredLogger, std.lang.SourceLocation) void,
     };
 
     const cases = [_]Case{
@@ -335,7 +335,7 @@ test "each formatting method logs at its own level" {
         case.log(&sugared, @src());
 
         var scratch: [16]u8 = undefined;
-        const rendered = try std.fmt.bufPrint(&scratch, "count {d}", .{expected});
+        const rendered = try std.mem.print(&scratch, "count {d}", .{expected});
 
         try testing.expect(output.contains(rendered));
         try testing.expect(output.contains(case.level_text));

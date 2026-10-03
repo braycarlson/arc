@@ -19,7 +19,7 @@ comptime {
 
 const runs: u32 = 9;
 
-const long_string = "x" ** 256;
+const long_string: [256]u8 = @splat('x');
 
 var bench_io: std.Io = undefined;
 
@@ -252,7 +252,7 @@ fn run_string_escaped(logger: *Logger, output: *Buffer, accumulator: *u64, itera
 fn run_string_long(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {
     assert(iterations > 0);
 
-    run_fields(logger, output, accumulator, iterations, &.{arc.string("payload", long_string)});
+    run_fields(logger, output, accumulator, iterations, &.{arc.string("payload", &long_string)});
 }
 
 fn run_float_fields(logger: *Logger, output: *Buffer, accumulator: *u64, iterations: u32) void {

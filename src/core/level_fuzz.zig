@@ -36,8 +36,7 @@ pub fn main(gpa: Allocator, args: fuzz.FuzzArgs) !void {
 }
 
 fn verify_round_trip() !void {
-    inline for (@typeInfo(Level).@"enum".fields) |field| {
-        const at_level: Level = @enumFromInt(field.value);
+    for (std.enums.values(Level)) |at_level| {
         const lower = at_level.to_string();
         const upper = at_level.to_string_upper();
 

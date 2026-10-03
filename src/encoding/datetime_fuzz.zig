@@ -96,7 +96,7 @@ fn verify_iso8601_nano(timestamp_ns: i64, offset_minutes: i32) !void {
         return error.Iso8601NanoTruncated;
     }
 
-    const dot = std.mem.indexOfScalar(u8, text, '.') orelse {
+    const dot = std.mem.findScalar(u8, text, '.') orelse {
         return error.Iso8601NanoMissingFraction;
     };
 

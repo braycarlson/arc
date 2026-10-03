@@ -490,7 +490,7 @@ fn any_scalar(key: []const u8, value: anytype) Field {
     };
 }
 
-fn any_int(key: []const u8, value: anytype, comptime info: std.builtin.Type.Int) Field {
+fn any_int(key: []const u8, value: anytype, comptime info: std.lang.Type.Int) Field {
     if (info.signedness == .signed) {
         return switch (info.bits) {
             0...8 => int8(key, @intCast(value)),
@@ -510,14 +510,14 @@ fn any_int(key: []const u8, value: anytype, comptime info: std.builtin.Type.Int)
     }
 }
 
-fn any_float(key: []const u8, value: anytype, comptime info: std.builtin.Type.Float) Field {
+fn any_float(key: []const u8, value: anytype, comptime info: std.lang.Type.Float) Field {
     return switch (info.bits) {
         0...32 => float32(key, @floatCast(value)),
         else => float64(key, @floatCast(value)),
     };
 }
 
-fn any_pointer(key: []const u8, value: anytype, comptime info: std.builtin.Type.Pointer) Field {
+fn any_pointer(key: []const u8, value: anytype, comptime info: std.lang.Type.Pointer) Field {
     if (info.size == .slice and info.child == u8) {
         return string(key, value);
     }

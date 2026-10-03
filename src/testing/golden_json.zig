@@ -515,8 +515,9 @@ test "golden: context with single field" {
 test "golden: truncation notice" {
     var output = Buffer.init();
     var logger = buffer_logger(&output);
+    const big: [9000]u8 = @splat('a');
 
-    logger.info("hello", &.{arc.string("big", "a" ** 9000)}, @src());
+    logger.info("hello", &.{arc.string("big", &big)}, @src());
 
     try std.testing.expectEqualStrings(
         "{\"level\":\"info\",\"msg\":\"log entry exceeded buffer capacity and was dropped\"," ++

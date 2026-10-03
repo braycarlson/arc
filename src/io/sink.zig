@@ -232,7 +232,7 @@ fn seek_to_end(io: std.Io, file: std.Io.File) !void {
 
 fn split_scheme(path: []const u8) ?SchemeSplit {
     const marker = "://";
-    const index = std.mem.indexOf(u8, path, marker) orelse return null;
+    const index = std.mem.find(u8, path, marker) orelse return null;
 
     assert(index < path.len);
 

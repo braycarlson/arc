@@ -276,8 +276,8 @@ test "a checked entry carries its context fields ahead of the call fields" {
 
     checked.write(&.{field_mod.int64("status", 200)});
 
-    const service_at = std.mem.indexOf(u8, output.contents(), "\"service\"") orelse unreachable;
-    const status_at = std.mem.indexOf(u8, output.contents(), "\"status\"") orelse unreachable;
+    const service_at = std.mem.find(u8, output.contents(), "\"service\"") orelse unreachable;
+    const status_at = std.mem.find(u8, output.contents(), "\"status\"") orelse unreachable;
 
     try testing.expect(service_at < status_at);
 

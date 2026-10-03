@@ -61,7 +61,7 @@ pub const Sampler = struct {
     ) Decision {
         assert(self.is_valid());
 
-        const row: u8 = @intFromEnum(at_level);
+        const row: u8 = @backingInt(at_level);
 
         assert(row < levels_count);
 
@@ -189,7 +189,7 @@ const fnv_offset_basis: u64 = 14695981039346656037;
 const fnv_prime: u64 = 1099511628211;
 
 comptime {
-    assert(@intFromEnum(Level.fatal) < levels_count);
+    assert(@backingInt(Level.fatal) < levels_count);
     assert(level_counters_max > 0);
     assert(message_hash_bytes_max > 0);
     assert(tick_ns_default > 0);

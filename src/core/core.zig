@@ -124,7 +124,7 @@ pub const Core = union(enum) {
                 for (active) |*io_core| {
                     const io_level = io_core.level.level();
 
-                    if (@intFromEnum(io_level) < @intFromEnum(minimum)) {
+                    if (@backingInt(io_level) < @backingInt(minimum)) {
                         minimum = io_level;
                     }
                 }
@@ -288,11 +288,11 @@ pub const IncreaseLevelCore = struct {
     pub fn init(inner: *Core, at_level: Level) IncreaseLevelError!IncreaseLevelCore {
         const current = inner.minimum_level();
 
-        if (@intFromEnum(at_level) < @intFromEnum(current)) {
+        if (@backingInt(at_level) < @backingInt(current)) {
             return error.LevelNotIncreased;
         }
 
-        assert(@intFromEnum(at_level) >= @intFromEnum(current));
+        assert(@backingInt(at_level) >= @backingInt(current));
 
         return .{
             .inner = inner,

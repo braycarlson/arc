@@ -77,7 +77,7 @@ pub const Logger = struct {
             .context_cache_length = 0,
             .context_cache_field_count = 0,
             .context_cache_namespace_depth = 0,
-            .context_cache_state = .unbuilt,
+            .context_cache_state = .unavailable,
         };
 
         assert(logger.is_valid());
@@ -208,7 +208,6 @@ pub const Logger = struct {
         assert(fields.len > 0);
 
         var child: Logger = self.*;
-        child.context_cache_state = .unbuilt;
 
         for (fields) |field| {
             child.context_fields[child.context_fields_count] = field;
@@ -217,6 +216,8 @@ pub const Logger = struct {
 
         assert(child.context_fields_count <= fields_max);
 
+        child.build_context_cache();
+
         return child;
     }
 
@@ -224,7 +225,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.debug, message, fields, source);
     }
@@ -233,7 +234,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.info, message, fields, source);
     }
@@ -242,7 +243,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.warn, message, fields, source);
     }
@@ -251,7 +252,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.err, message, fields, source);
     }
@@ -260,7 +261,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.dpanic, message, fields, source);
     }
@@ -269,7 +270,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.panic, message, fields, source);
     }
@@ -278,7 +279,7 @@ pub const Logger = struct {
         self: *Logger,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         self.log(.fatal, message, fields, source);
     }
@@ -296,7 +297,7 @@ pub const Logger = struct {
         checked_entry: *CheckedEntry,
         at_level: Level,
         message: []const u8,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) bool {
         return self.check_entry_with_source(checked_entry, at_level, message, source);
     }
@@ -306,7 +307,7 @@ pub const Logger = struct {
         checked_entry: *CheckedEntry,
         at_level: Level,
         message: []const u8,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) bool {
         assert(self.is_valid());
 
@@ -363,7 +364,7 @@ pub const Logger = struct {
         self: *Logger,
         at_level: Level,
         message: []const u8,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) Entry {
         assert(self.is_valid());
 
@@ -388,9 +389,7 @@ pub const Logger = struct {
         return entry;
     }
 
-    fn apply_context_cache(self: *Logger, entry: *Entry) void {
-        self.apply_context_cache_build();
-
+    fn apply_context_cache(self: *const Logger, entry: *Entry) void {
         if (self.context_cache_state != .ready) {
             return;
         }
@@ -402,12 +401,8 @@ pub const Logger = struct {
         };
     }
 
-    fn apply_context_cache_build(self: *Logger) void {
+    fn build_context_cache(self: *Logger) void {
         assert(self.is_valid());
-
-        if (self.context_cache_state != .unbuilt) {
-            return;
-        }
 
         self.context_cache_state = .unavailable;
 
@@ -453,7 +448,7 @@ pub const Logger = struct {
         at_level: Level,
         message: []const u8,
         fields: []const Field,
-        source: std.builtin.SourceLocation,
+        source: std.lang.SourceLocation,
     ) void {
         assert(fields.len <= fields_max);
         assert(self.is_valid());
@@ -552,7 +547,6 @@ pub const Logger = struct {
 };
 
 const ContextCacheState = enum(u8) {
-    unbuilt,
     ready,
     unavailable,
 };
@@ -575,7 +569,7 @@ comptime {
 }
 
 fn should_log_always(at_level: Level) bool {
-    return @intFromEnum(at_level) >= @intFromEnum(Level.dpanic);
+    return @backingInt(at_level) >= @backingInt(Level.dpanic);
 }
 
 const testing = std.testing;

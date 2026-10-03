@@ -37,7 +37,7 @@ test "exactly fields_max fields encode to valid json with all present" {
     var index: usize = 0;
 
     while (index < arc.fields_max) : (index += 1) {
-        const key = try std.fmt.bufPrint(&keys[index], "k{d}", .{index});
+        const key = try std.mem.print(&keys[index], "k{d}", .{index});
         fields[index] = arc.int(key, @intCast(index));
     }
 

@@ -22,7 +22,7 @@ pub const Hook = union(enum) {
                 _ = atomic_counter.fetchAdd(1, .monotonic);
             },
             .level_counter => |counters| {
-                const index: u8 = @intFromEnum(entry.level);
+                const index: u8 = @backingInt(entry.level);
 
                 assert(index < levels_count);
                 _ = counters[index].fetchAdd(1, .monotonic);
@@ -83,7 +83,7 @@ comptime {
 }
 
 comptime {
-    assert(@intFromEnum(Level.fatal) < levels_count);
+    assert(@backingInt(Level.fatal) < levels_count);
 }
 
 const testing = std.testing;
@@ -144,12 +144,12 @@ test "a level counter hook counts entries into its own level slot" {
     set.run(&info_entry);
     set.run(&err_entry);
 
-    try testing.expectEqual(@as(u64, 2), counters[@intFromEnum(Level.info)].load(.acquire));
-    try testing.expectEqual(@as(u64, 1), counters[@intFromEnum(Level.err)].load(.acquire));
-    try testing.expectEqual(@as(u64, 0), counters[@intFromEnum(Level.debug)].load(.acquire));
+    try testing.expectEqual(@as(u64, 2), counters[@backingInt(Level.info)].load(.acquire));
+    try testing.expectEqual(@as(u64, 1), counters[@backingInt(Level.err)].load(.acquire));
+    try testing.expectEqual(@as(u64, 0), counters[@backingInt(Level.debug)].load(.acquire));
 
-    assert(counters[@intFromEnum(Level.info)].load(.acquire) == 2);
-    assert(counters[@intFromEnum(Level.debug)].load(.acquire) == 0);
+    assert(counters[@backingInt(Level.info)].load(.acquire) == 2);
+    assert(counters[@backingInt(Level.debug)].load(.acquire) == 0);
 }
 
 test "every hook in a set runs for one entry" {

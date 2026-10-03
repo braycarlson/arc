@@ -6,7 +6,7 @@
 # Usage (from anywhere): ./.script/test-docker.sh
 set -euo pipefail
 
-zig_version="0.16.0"
+zig_version="0.17.0"
 image="ubuntu:24.04"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
@@ -34,11 +34,11 @@ rm -rf /build/.zig-cache /build/zig-out
 cd /build
 
 echo "=== zig fmt --check ==="
-"${zig_bin}" fmt --check build.zig src examples benchmarks tests
+"${zig_bin}" fmt --check build.zig src examples benchmarks
 echo "=== zig build test ==="
 "${zig_bin}" build test
-echo "=== zig build test -Dtsan=true ==="
-"${zig_bin}" build test -Dtsan=true
+echo "=== zig build test -Dtsan=true --release=safe ==="
+"${zig_bin}" build test -Dtsan=true --release=safe
 echo "=== zig build soak ==="
 "${zig_bin}" build soak
 echo "=== zig build fuzz ==="

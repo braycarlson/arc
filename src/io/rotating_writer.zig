@@ -223,7 +223,7 @@ pub const RotatingWriter = struct {
         const directory = std.Io.Dir.cwd();
         const path = self.path_slice();
 
-        if (std.fs.path.dirname(path)) |parent| {
+        if (std.Io.Dir.path.dirname(path)) |parent| {
             directory.createDir(io, parent, .default_dir) catch |failure| switch (failure) {
                 error.PathAlreadyExists => {},
                 else => return error.FileOpenFailed,
@@ -482,10 +482,10 @@ test "a logger writes encoded entries through a rotating writer" {
     defer testing.allocator.free(content);
 
     try testing.expect(content.len > 0);
-    try testing.expect(std.mem.indexOf(u8, content, "integration message") != null);
-    try testing.expect(std.mem.indexOf(u8, content, "phase") != null);
-    try testing.expect(std.mem.indexOfScalar(u8, content, 0x1b) == null);
-    try testing.expect(std.mem.indexOf(u8, content, "1970-01-01T00:00:01.000000000Z") != null);
+    try testing.expect(std.mem.find(u8, content, "integration message") != null);
+    try testing.expect(std.mem.find(u8, content, "phase") != null);
+    try testing.expect(std.mem.findScalar(u8, content, 0x1b) == null);
+    try testing.expect(std.mem.find(u8, content, "1970-01-01T00:00:01.000000000Z") != null);
 }
 
 test "a rotating writer reports a rotation that cannot reopen its file" {

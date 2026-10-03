@@ -28,6 +28,12 @@ pub fn build(b: *std.Build) void {
     const optimize = b.standardOptimizeOption(.{});
     const tsan = b.option(bool, "tsan", "Build the test suites with ThreadSanitizer") orelse false;
 
+    const filters = b.option(
+        []const []const u8,
+        "test-filter",
+        "Skip tests that do not match any filter",
+    ) orelse &.{};
+
     const steps = Steps{
         .bench = b.step("bench", "Run the benchmark suite"),
         .check = b.step("check", "Compile every artifact without running it"),
@@ -47,8 +53,8 @@ pub fn build(b: *std.Build) void {
 
     add_format(b, &steps);
     add_example(b, &steps, module, target, optimize);
-    add_unit_tests(b, &steps, target, optimize, tsan);
-    add_integration_tests(b, &steps, module, target, optimize, tsan);
+    add_unit_tests(b, &steps, target, optimize, tsan, filters);
+    add_integration_tests(b, &steps, module, target, optimize, tsan, filters);
     add_bench(b, &steps, module, target, optimize);
     add_soak(b, &steps, module, target, optimize);
     add_fuzz(b, &steps, target, optimize);
@@ -65,7 +71,7 @@ pub fn build(b: *std.Build) void {
 fn add_module(
     b: *std.Build,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
 ) *std.Build.Module {
     return b.addModule("arc", .{
         .root_source_file = b.path("src/root.zig"),
@@ -76,7 +82,7 @@ fn add_module(
 
 fn add_format(b: *std.Build, steps: *const Steps) void {
     const fmt = b.addFmt(.{
-        .paths = &format_paths,
+        .paths = b.pathList(&format_paths),
         .check = true,
     });
 
@@ -89,7 +95,7 @@ fn add_example(
     steps: *const Steps,
     module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
 ) void {
     const exe = b.addExecutable(.{
         .name = "arc",
@@ -107,8 +113,7 @@ fn add_example(
 
     run.setCwd(b.path("."));
     run.step.dependOn(b.getInstallStep());
-
-    if (b.args) |args| run.addArgs(args);
+    run.addPassthruArgs();
 
     steps.run.dependOn(&run.step);
     steps.check.dependOn(&exe.step);
@@ -118,8 +123,9 @@ fn add_unit_tests(
     b: *std.Build,
     steps: *const Steps,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     tsan: bool,
+    filters: []const []const u8,
 ) void {
     const unit = b.addTest(.{
         .root_module = b.createModule(.{
@@ -128,7 +134,7 @@ fn add_unit_tests(
             .optimize = optimize,
             .sanitize_thread = if (tsan) true else null,
         }),
-        .filters = b.args orelse &.{},
+        .filters = filters,
     });
 
     const run = b.addRunArtifact(unit);
@@ -145,8 +151,9 @@ fn add_integration_tests(
     steps: *const Steps,
     module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
     tsan: bool,
+    filters: []const []const u8,
 ) void {
     const integration = b.addTest(.{
         .root_module = b.createModule(.{
@@ -156,7 +163,7 @@ fn add_integration_tests(
             .sanitize_thread = if (tsan) true else null,
             .imports = &.{.{ .name = "arc", .module = module }},
         }),
-        .filters = b.args orelse &.{},
+        .filters = filters,
     });
 
     const run = b.addRunArtifact(integration);
@@ -173,7 +180,7 @@ fn add_bench(
     steps: *const Steps,
     module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
 ) void {
     const exe = b.addExecutable(.{
         .name = "bench",
@@ -198,7 +205,7 @@ fn add_soak(
     steps: *const Steps,
     module: *std.Build.Module,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
 ) void {
     const exe = b.addExecutable(.{
         .name = "soak",
@@ -222,7 +229,7 @@ fn add_fuzz(
     b: *std.Build,
     steps: *const Steps,
     target: std.Build.ResolvedTarget,
-    optimize: std.builtin.OptimizeMode,
+    optimize: std.lang.Optimize,
 ) void {
     const exe = b.addExecutable(.{
         .name = "fuzz",
@@ -236,8 +243,7 @@ fn add_fuzz(
     const run = b.addRunArtifact(exe);
 
     run.setCwd(b.path("."));
-
-    if (b.args) |args| run.addArgs(args);
+    run.addPassthruArgs();
 
     const smoke = b.addRunArtifact(exe);
 

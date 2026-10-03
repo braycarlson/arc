@@ -640,11 +640,11 @@ pub fn write_reflect(buffer: *Buffer, value: anytype, depth: u8) void {
         .@"struct" => |info| {
             buffer.append_byte('{');
 
-            inline for (info.fields, 0..) |struct_field, index| {
+            inline for (info.field_names, 0..) |field_name, index| {
                 if (index > 0) buffer.append_byte(',');
-                write_quoted(buffer, struct_field.name);
+                write_quoted(buffer, field_name);
                 buffer.append_byte(':');
-                write_reflect(buffer, @field(value, struct_field.name), depth + 1);
+                write_reflect(buffer, @field(value, field_name), depth + 1);
             }
 
             buffer.append_byte('}');
@@ -667,7 +667,7 @@ pub fn write_reflect(buffer: *Buffer, value: anytype, depth: u8) void {
 fn write_reflect_pointer(
     buffer: *Buffer,
     value: anytype,
-    comptime info: std.builtin.Type.Pointer,
+    comptime info: std.lang.Type.Pointer,
     depth: u8,
 ) void {
     assert(buffer.is_valid());

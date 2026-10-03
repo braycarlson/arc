@@ -355,7 +355,7 @@ fn logfmt_logger(output: *Buffer) Logger {
 }
 
 fn contains(text: []const u8, needle: []const u8) bool {
-    return std.mem.indexOf(u8, text, needle) != null;
+    return std.mem.find(u8, text, needle) != null;
 }
 
 test "a logfmt console renders scalar fields as key and value pairs" {

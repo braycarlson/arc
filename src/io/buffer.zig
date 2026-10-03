@@ -87,7 +87,7 @@ pub const Buffer = struct {
 
         var scratch: [32]u8 = undefined;
 
-        const formatted = std.fmt.bufPrint(&scratch, "{d}", .{value}) catch {
+        const formatted = std.mem.print(&scratch, "{d}", .{value}) catch {
             self.append_slice("null");
             return;
         };
@@ -242,7 +242,7 @@ pub const Buffer = struct {
             return false;
         }
 
-        return std.mem.indexOf(u8, self.contents(), needle) != null;
+        return std.mem.find(u8, self.contents(), needle) != null;
     }
 };
 

@@ -116,8 +116,9 @@ test "golden console: logger name segment" {
 test "golden console: truncation notice" {
     var output = Buffer.init();
     var logger = console_logger(&output, EncoderConfig.production());
+    const big: [9000]u8 = @splat('a');
 
-    logger.info("hello", &.{arc.string("big", "a" ** 9000)}, @src());
+    logger.info("hello", &.{arc.string("big", &big)}, @src());
 
     try std.testing.expectEqualStrings(
         "info\tlog entry exceeded buffer capacity and was dropped\n",

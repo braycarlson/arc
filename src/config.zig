@@ -243,7 +243,7 @@ test "a development config carries the development defaults" {
     try testing.expect(!cfg.thread_safe);
     try testing.expect(cfg.is_development);
 
-    assert(@intFromEnum(cfg.level) == 0);
+    assert(@backingInt(cfg.level) == 0);
     assert(cfg.is_development);
 }
 
@@ -256,7 +256,7 @@ test "a nop config disables every output" {
     try testing.expect(!cfg.thread_safe);
     try testing.expect(!cfg.is_development);
 
-    assert(@intFromEnum(cfg.level) == @intFromEnum(Level.fatal));
+    assert(@backingInt(cfg.level) == @backingInt(Level.fatal));
     assert(!cfg.caller_enabled);
 }
 
@@ -266,7 +266,7 @@ test "setting a level overrides the one the config carried" {
     try testing.expectEqual(Level.debug, cfg.level);
     try testing.expect(cfg.caller_enabled);
 
-    assert(@intFromEnum(cfg.level) == 0);
+    assert(@backingInt(cfg.level) == 0);
     assert(cfg.thread_safe);
 }
 
@@ -305,7 +305,7 @@ test "setting a stacktrace level overrides the threshold the config carried" {
 
     try testing.expectEqual(Level.fatal, cfg.stacktrace_level_min);
 
-    assert(@intFromEnum(cfg.stacktrace_level_min) == @intFromEnum(Level.fatal));
+    assert(@backingInt(cfg.stacktrace_level_min) == @backingInt(Level.fatal));
     assert(cfg.caller_enabled);
 }
 
@@ -321,6 +321,6 @@ test "chained builder calls each keep the previous change" {
     try testing.expect(!cfg.thread_safe);
     try testing.expectEqual(Level.fatal, cfg.stacktrace_level_min);
 
-    assert(@intFromEnum(cfg.level) == 0);
+    assert(@backingInt(cfg.level) == 0);
     assert(!cfg.sampling.enabled);
 }
