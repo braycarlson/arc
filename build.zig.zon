@@ -1,0 +1,19 @@
+.{
+    .name = .arc,
+    .version = "0.1.0",
+    .minimum_zig_version = "0.17.0",
+    .fingerprint = 0x7fe653934c28eebe,
+    .paths = .{
+        "build.zig",
+        "build.zig.zon",
+        "LICENSE",
+        "NOTICE",
+        "README.md",
+        "src",
+    },
+    .dependencies = .{
+        .json = .{
+            .path = "../json-zig",
+        },
+    },
+}
